@@ -1,0 +1,10 @@
+{
+  "name": "griffin-backend",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Placeholder package.json so `bun install` can run in the backend folder. The backend is Python-based; use the venv and pip for Python deps.",
+  "scripts": {
+    "postinstall": "echo \"Backend uses Python; run 'pip install -r requirements.txt' instead of Bun.\""
+  },
+  "dependencies": {}
+}

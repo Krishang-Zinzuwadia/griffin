@@ -26,6 +26,11 @@ import {
   type ChatMessage,
 } from "@/lib/orchestrator-store";
 
+/** Agent descriptor used for @-mentions in the comms hub. */
+interface AgentRef {
+  id: string;
+  name: string;
+}
 
 interface FileNode {
   name: string;
@@ -44,24 +49,42 @@ const staticFileStructure: FileNode[] = [
         name: "components",
         type: "folder",
         children: [
-          { name: "Dashboard.tsx", type: "file", assignedTo: "Frontend Design", status: "pending" },
-          { name: "Charts.tsx", type: "file", assignedTo: "Frontend Design", status: "pending" },
+          {
+            name: "Dashboard.tsx",
+            type: "file",
+            assignedTo: "Frontend Design",
+            status: "pending",
+          },
+          {
+            name: "Charts.tsx",
+            type: "file",
+            assignedTo: "Frontend Design",
+            status: "pending",
+          },
         ],
       },
       {
         name: "api",
         type: "folder",
         children: [
-          { name: "routes.ts", type: "file", assignedTo: "Backend API", status: "pending" },
-          { name: "schema.ts", type: "file", assignedTo: "Backend API", status: "pending" },
+          {
+            name: "routes.ts",
+            type: "file",
+            assignedTo: "Backend API",
+            status: "pending",
+          },
+          {
+            name: "schema.ts",
+            type: "file",
+            assignedTo: "Backend API",
+            status: "pending",
+          },
         ],
       },
     ],
   },
   { name: "package.json", type: "file", status: "done" },
 ];
-
-
 
 function FileTree({ nodes, depth = 0 }: { nodes: FileNode[]; depth?: number }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
@@ -111,7 +134,12 @@ function FileTree({ nodes, depth = 0 }: { nodes: FileNode[]; depth?: number }) {
             )}
             <span className="flex-1 text-left truncate">{node.name}</span>
             {node.status && (
-              <span className={cn("w-2 h-2 rounded-full", statusColors[node.status])} />
+              <span
+                className={cn(
+                  "w-2 h-2 rounded-full",
+                  statusColors[node.status],
+                )}
+              />
             )}
           </button>
           {node.type === "folder" && expanded[node.name] && node.children && (
@@ -123,9 +151,13 @@ function FileTree({ nodes, depth = 0 }: { nodes: FileNode[]; depth?: number }) {
   );
 }
 
-
-
-function MessageBubble({ message, compact = false }: { message: ChatMessage; compact?: boolean }) {
+function MessageBubble({
+  message,
+  compact = false,
+}: {
+  message: ChatMessage;
+  compact?: boolean;
+}) {
   return (
     <div className={cn("flex gap-2", compact ? "gap-2" : "gap-3")}>
       <Avatar className={cn(compact ? "w-6 h-6" : "w-8 h-8", "shrink-0")}>
@@ -143,7 +175,9 @@ function MessageBubble({ message, compact = false }: { message: ChatMessage; com
       </Avatar>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1 mb-0.5">
-          <span className={cn(compact ? "text-xs" : "text-sm", "font-semibold")}>
+          <span
+            className={cn(compact ? "text-xs" : "text-sm", "font-semibold")}
+          >
             {message.author}
           </span>
           {!message.isUser && compact && (
@@ -152,17 +186,24 @@ function MessageBubble({ message, compact = false }: { message: ChatMessage; com
             </Badge>
           )}
           <span className="text-xs text-muted-foreground">
-            {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            {message.timestamp.toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
           </span>
         </div>
-        <p className={cn(compact ? "text-xs text-muted-foreground" : "text-sm", "leading-relaxed")}>
+        <p
+          className={cn(
+            compact ? "text-xs text-muted-foreground" : "text-sm",
+            "leading-relaxed",
+          )}
+        >
           {message.content}
         </p>
       </div>
     </div>
   );
 }
-
 
 export function ChatPage() {
   const {
@@ -171,8 +212,8 @@ export function ChatPage() {
     wrappers,
     connected,
     connect,
-    disconnect,
     sendChatMessage,
+    sendEnvelope,
   } = useOrchestratorStore();
 
   const [userInput, setUserInput] = useState("");
@@ -190,10 +231,10 @@ export function ChatPage() {
     // Don't disconnect on unmount — the WS connection is shared across views
   }, []);
 
-  /** Derive available agent names from live wrappers (excluding ui-observer). */
-  const agents = Object.values(wrappers)
+  /** Derive available agents from live wrappers (excluding ui-observer). */
+  const agents: AgentRef[] = Object.values(wrappers)
     .filter((w) => w.type !== "ui-observer")
-    .map((w) => w.meta.name);
+    .map((w) => ({ id: w.id, name: w.meta.name }));
 
   useEffect(() => {
     userScrollRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -219,9 +260,9 @@ export function ChatPage() {
   };
 
   /** Insert an @mention into the agent input. */
-  const insertMention = (agent: string) => {
+  const insertMention = (agentName: string) => {
     const lastAt = agentInput.lastIndexOf("@");
-    const newValue = agentInput.slice(0, lastAt) + `@${agent} `;
+    const newValue = agentInput.slice(0, lastAt) + `@${agentName} `;
     setAgentInput(newValue);
     setShowMentions(false);
   };
@@ -229,7 +270,26 @@ export function ChatPage() {
   /** Send a free-form message from the agent comms input. */
   const handleAgentSend = () => {
     if (!agentInput.trim()) return;
-    sendChatMessage(agentInput.trim());
+    const text = agentInput.trim();
+
+    // Check for @mention to route to a specific wrapper
+    const mentionMatch = text.match(/@(\S+)/);
+    const targetAgent = mentionMatch
+      ? agents.find((a) => a.name === mentionMatch[1])
+      : null;
+
+    if (targetAgent) {
+      sendEnvelope({
+        type: "EVENT",
+        src: "ui-observer",
+        dst: targetAgent.id,
+        ts: Date.now(),
+        payload: { kind: "CHAT_MESSAGE", text },
+      });
+    } else {
+      // Route through PM if no specific target
+      sendChatMessage(text);
+    }
     setAgentInput("");
   };
 
@@ -332,7 +392,8 @@ export function ChatPage() {
                     <span
                       className={cn(
                         "w-2 h-2 rounded-full",
-                        w.status === "WORKING" && "bg-emerald-400 animate-pulse",
+                        w.status === "WORKING" &&
+                          "bg-emerald-400 animate-pulse",
                         w.status === "THINKING" && "bg-amber-400 animate-pulse",
                         w.status === "BLOCKED" && "bg-red-400 animate-pulse",
                         w.status === "IDLE" && "bg-zinc-400",
@@ -345,7 +406,9 @@ export function ChatPage() {
                   </div>
                 ))}
               {Object.keys(wrappers).length === 0 && (
-                <p className="text-xs text-muted-foreground">No agents connected</p>
+                <p className="text-xs text-muted-foreground">
+                  No agents connected
+                </p>
               )}
             </div>
           </div>
@@ -380,12 +443,12 @@ export function ChatPage() {
               <div className="absolute bottom-full left-3 right-3 mb-1 bg-popover border border-border rounded-lg shadow-lg p-1">
                 {agents.map((agent) => (
                   <button
-                    key={agent}
-                    onClick={() => insertMention(agent)}
+                    key={agent.id}
+                    onClick={() => insertMention(agent.name)}
                     className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-accent transition-colors"
                   >
                     <AtSign className="w-3 h-3 text-muted-foreground" />
-                    {agent}
+                    {agent.name}
                   </button>
                 ))}
               </div>
