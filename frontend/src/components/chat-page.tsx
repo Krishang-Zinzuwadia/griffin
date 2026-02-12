@@ -27,6 +27,12 @@ import {
 } from "@/lib/orchestrator-store";
 
 
+/** Agent descriptor used for @-mentions in the comms hub. */
+interface AgentRef {
+  id: string;
+  name: string;
+}
+
 interface FileNode {
   name: string;
   type: "file" | "folder";
@@ -171,8 +177,8 @@ export function ChatPage() {
     wrappers,
     connected,
     connect,
-    disconnect,
     sendChatMessage,
+    sendEnvelope,
   } = useOrchestratorStore();
 
   const [userInput, setUserInput] = useState("");
@@ -190,10 +196,10 @@ export function ChatPage() {
     // Don't disconnect on unmount — the WS connection is shared across views
   }, []);
 
-  /** Derive available agent names from live wrappers (excluding ui-observer). */
-  const agents = Object.values(wrappers)
+  /** Derive available agents from live wrappers (excluding ui-observer). */
+  const agents: AgentRef[] = Object.values(wrappers)
     .filter((w) => w.type !== "ui-observer")
-    .map((w) => w.meta.name);
+    .map((w) => ({ id: w.id, name: w.meta.name }));
 
   useEffect(() => {
     userScrollRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -219,9 +225,9 @@ export function ChatPage() {
   };
 
   /** Insert an @mention into the agent input. */
-  const insertMention = (agent: string) => {
+  const insertMention = (agentName: string) => {
     const lastAt = agentInput.lastIndexOf("@");
-    const newValue = agentInput.slice(0, lastAt) + `@${agent} `;
+    const newValue = agentInput.slice(0, lastAt) + `@${agentName} `;
     setAgentInput(newValue);
     setShowMentions(false);
   };
@@ -229,7 +235,26 @@ export function ChatPage() {
   /** Send a free-form message from the agent comms input. */
   const handleAgentSend = () => {
     if (!agentInput.trim()) return;
-    sendChatMessage(agentInput.trim());
+    const text = agentInput.trim();
+
+    // Check for @mention to route to a specific wrapper
+    const mentionMatch = text.match(/@(\S+)/);
+    const targetAgent = mentionMatch
+      ? agents.find((a) => a.name === mentionMatch[1])
+      : null;
+
+    if (targetAgent) {
+      sendEnvelope({
+        type: "EVENT",
+        src: "ui-observer",
+        dst: targetAgent.id,
+        ts: Date.now(),
+        payload: { kind: "CHAT_MESSAGE", text },
+      });
+    } else {
+      // Route through PM if no specific target
+      sendChatMessage(text);
+    }
     setAgentInput("");
   };
 
@@ -380,12 +405,12 @@ export function ChatPage() {
               <div className="absolute bottom-full left-3 right-3 mb-1 bg-popover border border-border rounded-lg shadow-lg p-1">
                 {agents.map((agent) => (
                   <button
-                    key={agent}
-                    onClick={() => insertMention(agent)}
+                    key={agent.id}
+                    onClick={() => insertMention(agent.name)}
                     className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-accent transition-colors"
                   >
                     <AtSign className="w-3 h-3 text-muted-foreground" />
-                    {agent}
+                    {agent.name}
                   </button>
                 ))}
               </div>
