@@ -49,12 +49,25 @@ const statusConfig: Record<OfficeStatus, { color: string; pulse: boolean }> = {
 };
 
 const roleIcons = {
-  "Head Agent": Brain,
+  Orchestrator: Brain,
+  Architect: Brain,
   "Frontend Dev": Code,
   "Backend Dev": Database,
+  Deployment: Globe,
   Security: Shield,
   DevOps: Globe,
   default: Bot,
+} as const;
+
+const roleColors = {
+  Orchestrator: "from-purple-500 to-purple-700",
+  Architect: "from-blue-500 to-blue-700",
+  "Frontend Dev": "from-cyan-500 to-cyan-700",
+  "Backend Dev": "from-green-500 to-green-700",
+  Deployment: "from-orange-500 to-orange-700",
+  Security: "from-red-500 to-red-700",
+  DevOps: "from-orange-500 to-orange-700",
+  default: "from-gray-400 to-gray-600",
 } as const;
 
 type RoleIconKey = keyof typeof roleIcons;
@@ -83,6 +96,7 @@ function OfficeNode({ data }: { data: OfficeNodeData }) {
   const status = statusConfig[data.status];
   const IconComponent =
     roleIcons[data.role as RoleIconKey] ?? roleIcons.default;
+  const roleColor = roleColors[data.role as RoleIconKey] ?? roleColors.default;
 
   return (
     <motion.div
@@ -122,10 +136,8 @@ function OfficeNode({ data }: { data: OfficeNodeData }) {
       <div className="flex items-start gap-3">
         <div
           className={cn(
-            "w-10 h-10 rounded-lg flex items-center justify-center shrink-0",
-            data.type === "head"
-              ? "bg-gradient-to-br from-gray-200 to-gray-400"
-              : "bg-gradient-to-br from-gray-400 to-gray-600",
+            "w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br",
+            roleColor
           )}
         >
           <IconComponent className="w-5 h-5 text-white" />
@@ -303,71 +315,55 @@ const DEMO_NODES: Node<OfficeNodeData>[] = [
     type: "office",
     position: { x: 400, y: 50 },
     data: {
-      label: "Executive Management",
-      status: "working",
+      label: "CEO Office",
+      status: "idle",
       type: "head",
-      role: "CPO",
+      role: "Orchestrator",
       drones: [
-        { name: "Requirements Analyst", status: "working" },
-        { name: "Resource Allocator", status: "idle" },
+        { name: "Project Planner", status: "idle" },
+        { name: "File Manifest Generator", status: "idle" },
       ],
     },
   },
   {
     id: "2",
     type: "office",
-    position: { x: 50, y: 250 },
+    position: { x: 400, y: 250 },
     data: {
-      label: "Product Management",
-      status: "thinking",
+      label: "Product Office",
+      status: "idle",
       type: "worker",
-      role: "PM",
+      role: "Architect",
       drones: [
-        { name: "User Story Writer", status: "thinking" },
-        { name: "Feature Prioritizer", status: "idle" },
+        { name: "Tech Stack Selector", status: "idle" },
+        { name: "Architecture Designer", status: "idle" },
       ],
     },
   },
   {
     id: "3",
     type: "office",
-    position: { x: 300, y: 250 },
+    position: { x: 150, y: 450 },
     data: {
-      label: "Database Systems",
-      status: "working",
+      label: "Engineering - Frontend",
+      status: "idle",
       type: "worker",
-      role: "DBA Manager",
+      role: "Frontend Dev",
       drones: [
-        { name: "Schema Architect", status: "working" },
-        { name: "SQL Optimizer", status: "working" },
-        { name: "Seeder", status: "idle" },
+        { name: "Component Builder", status: "idle" },
+        { name: "UI Developer", status: "idle" },
       ],
     },
   },
   {
     id: "4",
     type: "office",
-    position: { x: 550, y: 250 },
+    position: { x: 650, y: 450 },
     data: {
-      label: "Web Frontend",
-      status: "working",
-      type: "worker",
-      role: "Frontend Lead",
-      drones: [
-        { name: "Component Builder", status: "working" },
-        { name: "State Manager", status: "thinking" },
-      ],
-    },
-  },
-  {
-    id: "5",
-    type: "office",
-    position: { x: 800, y: 250 },
-    data: {
-      label: "Backend Engineering",
+      label: "Engineering - Backend",
       status: "idle",
       type: "worker",
-      role: "Backend Lead",
+      role: "Backend Dev",
       drones: [
         { name: "API Developer", status: "idle" },
         { name: "Logic Engineer", status: "idle" },
@@ -375,49 +371,17 @@ const DEMO_NODES: Node<OfficeNodeData>[] = [
     },
   },
   {
-    id: "6",
+    id: "5",
     type: "office",
-    position: { x: 400, y: 450 },
+    position: { x: 400, y: 650 },
     data: {
-      label: "DevOps & Deployment",
-      status: "thinking",
-      type: "worker",
-      role: "SRE",
-      drones: [
-        { name: "CI/CD Architect", status: "thinking" },
-        { name: "Release Manager", status: "idle" },
-        { name: "Docker Specialist", status: "idle" },
-      ],
-    },
-  },
-  {
-    id: "7",
-    type: "office",
-    position: { x: 100, y: 650 },
-    data: {
-      label: "QA & Testing",
-      status: "blocked",
-      type: "worker",
-      role: "QA Lead",
-      drones: [
-        { name: "Unit Tester", status: "blocked" },
-        { name: "E2E Scripter", status: "idle" },
-      ],
-    },
-  },
-  {
-    id: "8",
-    type: "office",
-    position: { x: 700, y: 650 },
-    data: {
-      label: "Cybersecurity",
+      label: "DevOps Office",
       status: "idle",
       type: "worker",
-      role: "CISO",
+      role: "Deployment",
       drones: [
-        { name: "Red Teamer", status: "idle" },
-        { name: "Blue Teamer", status: "idle" },
-        { name: "Compliance Officer", status: "idle" },
+        { name: "Git Manager", status: "idle" },
+        { name: "GitHub Publisher", status: "idle" },
       ],
     },
   },
@@ -432,60 +396,32 @@ const DEMO_EDGES: Edge[] = [
     style: { stroke: "#3b82f6" },
   },
   {
-    id: "e1-3",
-    source: "1",
+    id: "e2-3",
+    source: "2",
     target: "3",
     animated: true,
-    style: { stroke: "#fbbf24" },
+    style: { stroke: "#10b981" },
   },
   {
-    id: "e1-4",
-    source: "1",
+    id: "e2-4",
+    source: "2",
     target: "4",
     animated: true,
     style: { stroke: "#10b981" },
   },
   {
-    id: "e1-5",
-    source: "1",
+    id: "e3-5",
+    source: "3",
     target: "5",
     animated: true,
-    style: { stroke: "#10b981" },
-  },
-  {
-    id: "e3-4",
-    source: "3",
-    target: "4",
-    animated: true,
     style: { stroke: "#fbbf24" },
   },
   {
-    id: "e4-6",
+    id: "e4-5",
     source: "4",
-    target: "6",
+    target: "5",
     animated: true,
-    style: { stroke: "#10b981" },
-  },
-  {
-    id: "e5-6",
-    source: "5",
-    target: "6",
-    animated: true,
-    style: { stroke: "#10b981" },
-  },
-  {
-    id: "e6-7",
-    source: "6",
-    target: "7",
-    animated: true,
-    style: { stroke: "#ef4444" },
-  },
-  {
-    id: "e6-8",
-    source: "6",
-    target: "8",
-    animated: true,
-    style: { stroke: "#3b82f6" },
+    style: { stroke: "#fbbf24" },
   },
 ];
 

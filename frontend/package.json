@@ -19,6 +19,7 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
+    "@tauri-apps/plugin-shell": "^2.3.5",
     "@types/three": "^0.182.0",
     "@xyflow/react": "^12.10.0",
     "class-variance-authority": "^0.7.1",

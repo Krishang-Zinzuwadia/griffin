@@ -214,6 +214,7 @@ export function ChatPage() {
     connect,
     sendChatMessage,
     sendEnvelope,
+    projectFiles,
   } = useOrchestratorStore();
 
   const [userInput, setUserInput] = useState("");
@@ -244,10 +245,12 @@ export function ChatPage() {
     agentScrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [agentMessages]);
 
-  /** Send user message through PM wrapper. */
-  const handleUserSend = () => {
+  /** Send user message through PM wrapper and execute ML pipeline. */
+  const handleUserSend = async () => {
     if (!userInput.trim()) return;
-    sendChatMessage(userInput.trim());
+    const text = userInput.trim();
+
+    sendChatMessage(text);
     setUserInput("");
   };
 
@@ -293,11 +296,57 @@ export function ChatPage() {
     setAgentInput("");
   };
 
+  // Build file tree from flat file list
+  const buildFileTree = (files: string[]): FileNode[] => {
+    const root: Record<string, any> = {};
+    
+    files.forEach(filepath => {
+      const parts = filepath.split('/');
+      let current = root;
+      
+      parts.forEach((part, index) => {
+        if (!current[part]) {
+          current[part] = index === parts.length - 1 
+            ? { _isFile: true, _path: filepath }
+            : {};
+        }
+        current = current[part];
+      });
+    });
+    
+    const convertToNodes = (obj: Record<string, any>, path: string = ''): FileNode[] => {
+      return Object.keys(obj).map(key => {
+        const value = obj[key];
+        const fullPath = path ? `${path}/${key}` : key;
+        
+        if (value._isFile) {
+          return {
+            name: key,
+            type: 'file' as const,
+            status: 'done' as const,
+          };
+        } else {
+          return {
+            name: key,
+            type: 'folder' as const,
+            children: convertToNodes(value, fullPath),
+          };
+        }
+      });
+    };
+    
+    return convertToNodes(root);
+  };
+
+  const fileTreeNodes = projectFiles.length > 0 
+    ? buildFileTree(projectFiles) 
+    : staticFileStructure;
+
   return (
-    <div className="h-full flex bg-background">
+    <div className="h-full flex bg-background overflow-hidden">
       {/* -------- Left Panel – Main User Chat -------- */}
-      <div className="flex-1 flex flex-col border-r border-border">
-        <div className="h-12 border-b border-border flex items-center px-4">
+      <div className="flex-1 flex flex-col border-r border-border min-w-0">
+        <div className="h-12 border-b border-border flex items-center px-4 flex-shrink-0">
           <User className="w-4 h-4 mr-2 text-muted-foreground" />
           <span className="font-semibold text-sm">Main Chat</span>
           <Badge variant="secondary" className="ml-2 text-xs">
@@ -315,7 +364,7 @@ export function ChatPage() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
           {chatMessages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-sm">
               <Bot className="w-8 h-8 mb-2 opacity-40" />
@@ -341,21 +390,16 @@ export function ChatPage() {
         </div>
 
         {/* Input */}
-        <div className="p-4 border-t border-border">
+        <div className="p-4 border-t border-border flex-shrink-0">
           <div className="flex gap-2">
             <Input
               value={userInput}
               onChange={(e) => setUserInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleUserSend()}
-              placeholder={
-                connected
-                  ? "Tell Griffin what to build..."
-                  : "Connect orchestrator to chat…"
-              }
-              disabled={!connected}
+              placeholder="Tell Griffin what to build..."
               className="flex-1"
             />
-            <Button onClick={handleUserSend} size="icon" disabled={!connected}>
+            <Button onClick={handleUserSend} size="icon">
               <Send className="w-4 h-4" />
             </Button>
           </div>
@@ -363,21 +407,21 @@ export function ChatPage() {
       </div>
 
       {/* -------- Right Panel -------- */}
-      <div className="w-96 flex flex-col">
+      <div className="w-96 flex flex-col flex-shrink-0 overflow-hidden">
         {/* Top — Folder Structure & Team Activity */}
-        <div className="flex-1 border-b border-border overflow-hidden flex flex-col">
-          <div className="h-12 border-b border-border flex items-center px-4">
+        <div className="flex-1 border-b border-border overflow-hidden flex flex-col min-h-0">
+          <div className="h-12 border-b border-border flex items-center px-4 flex-shrink-0">
             <Folder className="w-4 h-4 mr-2 text-muted-foreground" />
             <span className="font-semibold text-sm">Project Files</span>
           </div>
-          <div className="flex-1 overflow-y-auto overflow-x-hidden p-3">
-            <FileTree nodes={staticFileStructure} />
+          <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 min-h-0">
+            <FileTree nodes={fileTreeNodes} />
           </div>
 
           <Separator />
 
           {/* Team Activity — derived from live wrapper statuses */}
-          <div className="p-3">
+          <div className="p-3 flex-shrink-0">
             <div className="flex items-center gap-2 mb-2">
               <Users className="w-4 h-4 text-muted-foreground" />
               <span className="text-xs font-semibold text-muted-foreground uppercase">
@@ -393,7 +437,7 @@ export function ChatPage() {
                       className={cn(
                         "w-2 h-2 rounded-full",
                         w.status === "WORKING" &&
-                          "bg-emerald-400 animate-pulse",
+                        "bg-emerald-400 animate-pulse",
                         w.status === "THINKING" && "bg-amber-400 animate-pulse",
                         w.status === "BLOCKED" && "bg-red-400 animate-pulse",
                         w.status === "IDLE" && "bg-zinc-400",
@@ -415,8 +459,8 @@ export function ChatPage() {
         </div>
 
         {/* Bottom — Comms Hub (agent messages) */}
-        <div className="flex-1 flex flex-col">
-          <div className="h-12 border-b border-border flex items-center px-4">
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className="h-12 border-b border-border flex items-center px-4 flex-shrink-0">
             <Bot className="w-4 h-4 mr-2 text-muted-foreground" />
             <span className="font-semibold text-sm">Comms Hub</span>
             <Badge variant="outline" className="ml-2 text-xs">
@@ -425,7 +469,7 @@ export function ChatPage() {
           </div>
 
           {/* Agent Messages */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
             {agentMessages.length === 0 && (
               <p className="text-xs text-muted-foreground text-center mt-4 opacity-60">
                 Agent responses will appear here…
@@ -438,7 +482,7 @@ export function ChatPage() {
           </div>
 
           {/* Agent Input with @mentions */}
-          <div className="p-3 border-t border-border relative">
+          <div className="p-3 border-t border-border relative flex-shrink-0">
             {showMentions && agents.length > 0 && (
               <div className="absolute bottom-full left-3 right-3 mb-1 bg-popover border border-border rounded-lg shadow-lg p-1">
                 {agents.map((agent) => (
@@ -460,13 +504,11 @@ export function ChatPage() {
                 onKeyDown={(e) => e.key === "Enter" && handleAgentSend()}
                 placeholder="Use @ to ping agents..."
                 className="flex-1 text-xs h-8"
-                disabled={!connected}
               />
               <Button
                 size="sm"
                 className="h-8 px-2"
                 onClick={handleAgentSend}
-                disabled={!connected}
               >
                 <Send className="w-3 h-3" />
               </Button>

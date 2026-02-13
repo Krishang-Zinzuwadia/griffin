@@ -24,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { useOrchestratorStore } from "@/lib/orchestrator-store";
 
 type ChannelType = "general" | "engineering" | "frontend" | "ops";
 type MessageType = "text" | "code" | "json" | "mermaid";
@@ -66,50 +67,7 @@ const channels: Channel[] = [
   { id: "ops", name: "ops-security", icon: Lock, unread: 0, locked: true },
 ];
 
-const initialMessages: Message[] = [
-  {
-    id: "1",
-    channel: "engineering",
-    author: "Head Agent",
-    avatar: "HA",
-    content:
-      "Frontend Design office is requesting API schema updates for the new dashboard.",
-    type: "text",
-    timestamp: new Date(Date.now() - 1000 * 60 * 5),
-    isAgent: true,
-  },
-  {
-    id: "2",
-    channel: "engineering",
-    author: "Backend Dev #1",
-    avatar: "BD",
-    content: "On it. Here's the updated schema:",
-    type: "text",
-    timestamp: new Date(Date.now() - 1000 * 60 * 4),
-    isAgent: true,
-  },
-  {
-    id: "3",
-    channel: "engineering",
-    author: "Backend Dev #1",
-    avatar: "BD",
-    content: `\`\`\`json\n{\n  "dashboard": {\n    "widgets": ["stats", "charts", "alerts"],\n    "realtime": true\n  }\n}\n\`\`\``,
-    type: "code",
-    timestamp: new Date(Date.now() - 1000 * 60 * 3),
-    isAgent: true,
-  },
-  {
-    id: "4",
-    channel: "frontend",
-    author: "Frontend Lead",
-    avatar: "FL",
-    content:
-      "Component library updated with new shadcn variants. Ready for integration.",
-    type: "text",
-    timestamp: new Date(Date.now() - 1000 * 60 * 2),
-    isAgent: true,
-  },
-];
+// Removed initialMessages
 
 function MessageContent({ message }: { message: Message }) {
   if (message.type === "code") {
@@ -124,40 +82,69 @@ function MessageContent({ message }: { message: Message }) {
 }
 
 export function CommunicationHub() {
-  const [activeChannel, setActiveChannel] =
-    useState<ChannelType>("engineering");
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const [activeChannel, setActiveChannel] = useState<ChannelType>("general");
   const [inputValue, setInputValue] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const { chatMessages, agentMessages, sendChatMessage, connected, connect } = useOrchestratorStore();
+
+  // Auto-connect if needed
+  useEffect(() => {
+    if (!connected) {
+      const URL = process.env.NEXT_PUBLIC_ML_SERVICE_URL ?? "ws://localhost:9100";
+      connect(URL);
+    }
+  }, [connected, connect]);
+
+  // Transform store messages to local format
+  const messages: Message[] = [
+    // General channel: Chat messages
+    ...chatMessages.map(m => ({
+      id: m.id,
+      channel: "general" as ChannelType,
+      author: m.author,
+      avatar: m.avatar,
+      content: m.content,
+      type: "text" as MessageType, // simplistic for now
+      timestamp: new Date(m.timestamp),
+      isAgent: !m.isUser,
+    })),
+    // Engineering channel: Agent messages
+    ...agentMessages.map(m => ({
+      id: m.id,
+      channel: "engineering" as ChannelType,
+      author: m.author,
+      avatar: m.avatar,
+      content: m.content,
+      type: "text" as MessageType,
+      timestamp: new Date(m.timestamp),
+      isAgent: true,
+    }))
+  ].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages.length, activeChannel]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!inputValue.trim()) return;
 
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      channel: activeChannel,
-      author: "You",
-      avatar: "YO",
-      content: inputValue,
-      type: "text",
-      timestamp: new Date(),
-      isAgent: false,
-    };
-
-    setMessages([...messages, newMessage]);
+    if (activeChannel === "general") {
+      const text = inputValue.trim();
+      sendChatMessage(text);
+    } else {
+      // For now, only general is interactive for user
+      console.warn("Sending in non-general channels not yet implemented without @mentions");
+    }
     setInputValue("");
   };
 
   const filteredMessages = messages.filter((m) => m.channel === activeChannel);
 
   return (
-    <div className="flex h-full bg-background">
+    <div className="flex h-screen bg-background overflow-hidden">
       {/* Channel Sidebar */}
-      <div className="w-64 border-r border-border bg-card/50">
+      <div className="w-64 border-r border-border bg-card/50 flex-shrink-0">
         <div className="p-4">
           <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">
             Channels
@@ -194,9 +181,9 @@ export function CommunicationHub() {
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Header */}
-        <div className="h-14 border-b border-border flex items-center justify-between px-4">
+        <div className="h-14 border-b border-border flex items-center justify-between px-4 flex-shrink-0">
           <div className="flex items-center gap-2">
             <Hash className="w-5 h-5 text-muted-foreground" />
             <span className="font-semibold">
@@ -222,7 +209,7 @@ export function CommunicationHub() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
           <AnimatePresence mode="popLayout">
             {filteredMessages.map((message, index) => {
               const showAvatar =
@@ -280,13 +267,17 @@ export function CommunicationHub() {
         </div>
 
         {/* Input */}
-        <div className="p-4 border-t border-border">
+        <div className="p-4 border-t border-border flex-shrink-0">
           <div className="flex gap-2">
             <Input
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSend()}
-              placeholder="Type a message... (Spectator mode - use /hijack to override)"
+              placeholder={
+                activeChannel === "general"
+                  ? "Message #general..."
+                  : `Message #${activeChannel}...`
+              }
               className="flex-1"
             />
             <Button onClick={handleSend} size="icon">
