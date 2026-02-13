@@ -52,13 +52,16 @@ export function CardStream({
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const groupRef = useRef<THREE.Group>(null);
   const { gl } = useThree();
-  
+
   // Scrolling only enabled after card expansion completes
   const canScroll = cardExpandProgress >= 1;
 
   // Duplicate universes to ensure at least 10 cards are always rendered
   const minCards = 10;
-  const repetitions = Math.max(2, Math.ceil(minCards / universes.length));
+  const repetitions =
+    universes.length === 0
+      ? 0
+      : Math.max(2, Math.ceil(minCards / universes.length));
   const extendedUniverses = Array.from({ length: repetitions }, (_, repIndex) =>
     universes.map((universe, idx) => ({
       ...universe,
@@ -74,25 +77,31 @@ export function CardStream({
   const scrollVelocity = useRef(0);
 
   // Handle hover change and notify parent
-  const handleHoverChange = useCallback((index: number | null) => {
-    setHoveredIndex(index);
-    if (onHoverChange) {
-      if (index !== null) {
-        const extUniverse = extendedUniverses[index];
-        const originalUniverse = universes[extUniverse.originalIndex];
-        onHoverChange(originalUniverse, extUniverse.originalIndex);
-      } else {
-        onHoverChange(null, null);
+  const handleHoverChange = useCallback(
+    (index: number | null) => {
+      setHoveredIndex(index);
+      if (onHoverChange) {
+        if (index !== null) {
+          const extUniverse = extendedUniverses[index];
+          const originalUniverse = universes[extUniverse.originalIndex];
+          onHoverChange(originalUniverse, extUniverse.originalIndex);
+        } else {
+          onHoverChange(null, null);
+        }
       }
-    }
-  }, [onHoverChange, extendedUniverses, universes]);
+    },
+    [onHoverChange, extendedUniverses, universes],
+  );
 
   // Handle wheel events for scrolling
-  const handleWheel = useCallback((e: WheelEvent) => {
-    if (!canScroll) return; // Only scroll after zoom out
-    e.preventDefault();
-    scrollVelocity.current += e.deltaY * STREAM_CONFIG.scrollSensitivity;
-  }, [canScroll]);
+  const handleWheel = useCallback(
+    (e: WheelEvent) => {
+      if (!canScroll) return; // Only scroll after zoom out
+      e.preventDefault();
+      scrollVelocity.current += e.deltaY * STREAM_CONFIG.scrollSensitivity;
+    },
+    [canScroll],
+  );
 
   // Register wheel listener on mount
   useEffect(() => {
@@ -121,7 +130,7 @@ export function CardStream({
 
   // Find the index of the active card in extendedUniverses (first occurrence)
   const activeCardIndex = extendedUniverses.findIndex(
-    (u) => u.originalIndex === activeIndex && u.repetitionIndex === 0
+    (u) => u.originalIndex === activeIndex && u.repetitionIndex === 0,
   );
 
   // Animate cards each frame
@@ -142,28 +151,33 @@ export function CardStream({
       const children = groupRef.current.children as THREE.Group[];
       const numCards = extendedUniverses.length;
       const { angle, spacing } = STREAM_CONFIG;
-      
+
       // Eased expansion progress for smooth card pop-out animation
       const easedProgress = easeOutBack(cardExpandProgress);
 
       children.forEach((child, index) => {
         const extUniverse = extendedUniverses[index];
-        const isActiveCard = extUniverse.originalIndex === activeIndex && extUniverse.repetitionIndex === 0;
-        
+        const isActiveCard =
+          extUniverse.originalIndex === activeIndex &&
+          extUniverse.repetitionIndex === 0;
+
         // Calculate position relative to active card (active card = center = 0)
         let relativeIndex = index - activeCardIndex;
-        
+
         // Wrap around for infinite scroll effect
         const halfCards = numCards / 2;
         if (relativeIndex > halfCards) relativeIndex -= numCards;
         if (relativeIndex < -halfCards) relativeIndex += numCards;
-        
+
         // Apply scroll offset
         let streamPos = relativeIndex * spacing - scrollOffset.current;
-        
+
         // Wrap stream position for infinite scrolling
         const totalLength = numCards * spacing;
-        streamPos = ((streamPos % totalLength) + totalLength + totalLength / 2) % totalLength - totalLength / 2;
+        streamPos =
+          (((streamPos % totalLength) + totalLength + totalLength / 2) %
+            totalLength) -
+          totalLength / 2;
 
         // Final position in the diagonal stream
         const finalX = Math.cos(angle) * streamPos;
@@ -192,7 +206,7 @@ export function CardStream({
             const y = finalY * easedProgress;
             const z = finalZ * easedProgress;
             child.position.set(x, y, z);
-            
+
             // Fade in as they expand
             const opacity = easeOutCubic(cardExpandProgress);
             child.userData.streamOpacity = opacity;
