@@ -15,6 +15,10 @@ from dotenv import load_dotenv
 _env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(_env_path)
 
+# Also load secrets/.env.local for tokens (GitHub, Vercel, etc.)
+_secrets_path = Path(__file__).resolve().parent.parent / "secrets" / ".env.local"
+load_dotenv(_secrets_path, override=True)
+
 # ── Provider Config ──────────────────────────────────────────────
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openrouter").lower()
 LLM_MODEL = os.getenv("LLM_MODEL", "google/gemini-2.0-flash-001")
@@ -29,6 +33,9 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 # ── GitHub Config ────────────────────────────────────────────────
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 GITHUB_OWNER = os.getenv("GITHUB_OWNER", "")
+
+# ── Vercel Config ────────────────────────────────────────────────
+VERCEL_TOKEN = os.getenv("VERCEL_TOKEN", "")
 
 # ── Paths ────────────────────────────────────────────────────────
 SANDBOX_DIR = Path(__file__).resolve().parent / "sandbox"
