@@ -14,6 +14,10 @@ from .logger import setup_logging, get_logger
 
 
 def main():
+    # ── Fix Windows encoding (cp1252 can't handle Unicode/emojis) ─
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
     colorama_init()  # Enable colors on Windows
 
     # ── Initialize structured logging ────────────────────────────
