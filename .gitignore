@@ -127,3 +127,8 @@ src-tauri/.incremental
 /src-tauri/gen/schemas
 
 sandbox
+
+# ML Office Chain
+ML/sandbox/
+ML/.venv/
+ML/venv/
