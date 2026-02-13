@@ -6,26 +6,28 @@ Takes the completed codebase and:
 2. Generates REPORT.md (execution summary)
 3. Creates a GitHub repo via PyGithub
 4. Pushes the code via GitPython
+5. Deploys to Vercel via REST API and returns the live URL
 """
 
 import os
-
+import base64
 import json
 import shutil
 import time
+import requests
 from pathlib import Path
 from colorama import Fore, Style
 from github import Github, GithubException
 from git import Repo as GitRepo
 
 from ..state import OfficeState
-from ..config import GITHUB_TOKEN, GITHUB_OWNER, SANDBOX_DIR
+from ..config import GITHUB_TOKEN, GITHUB_OWNER, SANDBOX_DIR, VERCEL_TOKEN
 from ..logger import get_logger
 
 logger = get_logger("devops")
 
 
-def _generate_report(state: OfficeState, total_elapsed: float) -> str:
+def _generate_report(state: OfficeState, total_elapsed: float, vercel_url: str = "") -> str:
     """Generate a REPORT.md summarizing the entire pipeline run."""
     codebase = state.get("codebase", {})
     tech_stack = state.get("tech_stack", {})
@@ -43,9 +45,19 @@ def _generate_report(state: OfficeState, total_elapsed: float) -> str:
         f"- **Total Time**: {total_elapsed:.1f}s",
         f"- **Files Generated**: {len(codebase)}",
         "",
-        "## Tech Stack",
-        "",
     ]
+
+    # Add deployment links section
+    github_url = state.get("github_url", "")
+    if github_url or vercel_url:
+        lines += ["## Deployment", ""]
+        if github_url:
+            lines.append(f"- **GitHub**: [{github_url}]({github_url})")
+        if vercel_url:
+            lines.append(f"- **Vercel (Live)**: [{vercel_url}]({vercel_url})")
+        lines.append("")
+
+    lines += ["## Tech Stack", ""]
 
     if tech_stack:
         for key, val in tech_stack.items():
@@ -87,8 +99,345 @@ def _generate_report(state: OfficeState, total_elapsed: float) -> str:
     return "\n".join(lines)
 
 
+# ═══════════════════════════════════════════════════════════════════
+# VERCEL DEPLOYMENT — Deploy via Vercel REST API
+# ═══════════════════════════════════════════════════════════════════
+
+VERCEL_API = "https://api.vercel.com"
+
+
+def _poll_vercel_deployment(deployment_id: str, headers: dict) -> str:
+    """Poll a Vercel deployment until it reaches a terminal state.
+
+    Args:
+        deployment_id: The deployment ID to poll.
+        headers: Auth headers for the Vercel API.
+
+    Returns:
+        The live URL if READY, or "" if failed/timed out.
+    """
+    max_polls = 60
+    poll_interval = 5  # seconds
+
+    for i in range(max_polls):
+        try:
+            resp = requests.get(
+                f"{VERCEL_API}/v13/deployments/{deployment_id}",
+                headers=headers,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            state = data.get("readyState", data.get("status", "UNKNOWN"))
+            logger.info(f"Poll {i+1}/{max_polls}: state={state}")
+
+            if state == "READY":
+                # Prefer the production alias (e.g. project-name.vercel.app)
+                aliases = data.get("alias", [])
+                url = aliases[0] if aliases else data.get("url", "")
+                if url and not url.startswith("https://"):
+                    url = f"https://{url}"
+                logger.info(f"Deployment READY: {url}")
+                return url
+
+            if state in ("ERROR", "CANCELED"):
+                error_msg = data.get("errorMessage", "No error details")
+                logger.error(f"Deployment {state}: {error_msg}")
+                return ""
+
+        except requests.RequestException as e:
+            logger.warning(f"Poll error: {e}")
+
+        time.sleep(poll_interval)
+
+    logger.warning("Deployment polling timed out after 5 minutes.")
+    return ""
+
+
+def _deploy_to_vercel(
+    project_name: str,
+    codebase: dict[str, str],
+    project_goal: str,
+    github_owner: str = "",
+) -> str:
+    """Deploy the codebase to Vercel, connecting to the GitHub repo.
+
+    Strategy:
+      1. Create/update a Vercel project linked to the GitHub repo.
+         Vercel auto-triggers a production deployment from main.
+      2. Fetch the latest deployment for that project and poll it.
+      3. If GitHub linking fails (e.g. Vercel GitHub App not installed),
+         fall back to direct file-upload deployment with static-site
+         settings so Vercel doesn't try to run `npm install`.
+
+    Args:
+        project_name: kebab-case project slug.
+        codebase: dict mapping relative file paths to their string content.
+        project_goal: one-line description used as project metadata.
+        github_owner: GitHub username/org that owns the repo.
+
+    Returns:
+        The live Vercel URL (e.g. "https://my-project.vercel.app"), or ""
+        if deployment failed.
+    """
+    if not VERCEL_TOKEN:
+        logger.warning("VERCEL_TOKEN not set — skipping Vercel deployment.")
+        return ""
+
+    headers = {
+        "Authorization": f"Bearer {VERCEL_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
+    # ── Attempt 1: GitHub-connected deployment ──────────────────
+    if github_owner:
+        vercel_url = _deploy_via_github(
+            project_name, project_goal, github_owner, headers
+        )
+        if vercel_url:
+            return vercel_url
+        logger.warning(
+            "GitHub-connected deployment failed — "
+            "falling back to file-upload deployment."
+        )
+
+    # ── Attempt 2: Direct file-upload (static-safe) ─────────────
+    return _deploy_via_file_upload(project_name, codebase, headers)
+
+
+def _deploy_via_github(
+    project_name: str,
+    project_goal: str,
+    github_owner: str,
+    headers: dict,
+) -> str:
+    """Create a Vercel project linked to a GitHub repo and wait for deploy.
+
+    Vercel auto-triggers a production deployment when a GitHub repo is
+    connected. We just need to find that deployment and poll it.
+
+    Returns:
+        The live URL, or "" on failure.
+    """
+    repo_slug = f"{github_owner}/{project_name}"
+    logger.info(f"Linking Vercel project to GitHub repo: {repo_slug}")
+
+    try:
+        # Check if project already exists
+        resp = requests.get(
+            f"{VERCEL_API}/v9/projects/{project_name}",
+            headers=headers,
+        )
+
+        if resp.status_code == 200:
+            # Project exists — try to update its git link
+            project_data = resp.json()
+            existing_repo = project_data.get("link", {})
+
+            if existing_repo.get("repo") == repo_slug:
+                logger.info("Project already linked to the correct GitHub repo.")
+            else:
+                # Delete and recreate to re-link (Vercel doesn't allow PATCH on git link)
+                logger.info("Deleting existing Vercel project to re-link GitHub repo...")
+                del_resp = requests.delete(
+                    f"{VERCEL_API}/v9/projects/{project_name}",
+                    headers=headers,
+                )
+                del_resp.raise_for_status()
+                logger.info("Old Vercel project deleted.")
+                resp = type("FakeResp", (), {"status_code": 404})()
+
+        if resp.status_code == 404 or resp.status_code != 200:
+            # Create the project with GitHub repo connection
+            logger.info(f"Creating Vercel project '{project_name}' linked to {repo_slug}...")
+            create_payload = {
+                "name": project_name,
+                "framework": None,
+                "gitRepository": {
+                    "type": "github",
+                    "repo": repo_slug,
+                },
+                "installCommand": "",
+                "buildCommand": "",
+                "outputDirectory": "",
+            }
+            create_resp = requests.post(
+                f"{VERCEL_API}/v10/projects",
+                headers=headers,
+                json=create_payload,
+            )
+
+            if create_resp.status_code >= 400:
+                error_body = create_resp.text
+                logger.error(
+                    f"Failed to create GitHub-linked project "
+                    f"(HTTP {create_resp.status_code}): {error_body}"
+                )
+                return ""
+
+            create_resp.raise_for_status()
+            logger.info(f"Vercel project '{project_name}' created with GitHub link.")
+
+    except requests.RequestException as e:
+        logger.error(f"GitHub-linked project setup failed: {e}")
+        return ""
+
+    # Wait a moment for Vercel to auto-trigger the deployment
+    logger.info("Waiting for Vercel to auto-trigger deployment from GitHub...")
+    time.sleep(8)
+
+    # Find the latest deployment for this project
+    try:
+        list_resp = requests.get(
+            f"{VERCEL_API}/v6/deployments",
+            headers=headers,
+            params={"projectId": project_name, "limit": 1, "target": "production"},
+        )
+        list_resp.raise_for_status()
+        deployments = list_resp.json().get("deployments", [])
+
+        if not deployments:
+            # Maybe it hasn't appeared yet — wait and retry
+            logger.info("No deployments found yet, waiting longer...")
+            time.sleep(10)
+            list_resp = requests.get(
+                f"{VERCEL_API}/v6/deployments",
+                headers=headers,
+                params={"projectId": project_name, "limit": 1},
+            )
+            list_resp.raise_for_status()
+            deployments = list_resp.json().get("deployments", [])
+
+        if not deployments:
+            logger.warning("No deployments found for the project after waiting.")
+            return ""
+
+        deployment = deployments[0]
+        deployment_id = deployment.get("uid", "")
+        state = deployment.get("readyState", deployment.get("state", "UNKNOWN"))
+        logger.info(
+            f"Found deployment: id={deployment_id}, state={state}"
+        )
+
+        if state == "READY":
+            url = deployment.get("url", "")
+            if url and not url.startswith("https://"):
+                url = f"https://{url}"
+            return url
+
+        if state in ("ERROR", "CANCELED"):
+            error_msg = deployment.get("errorMessage", "")
+            logger.error(f"Deployment already in {state}: {error_msg}")
+            return ""
+
+        # Still building — poll it
+        return _poll_vercel_deployment(deployment_id, headers)
+
+    except requests.RequestException as e:
+        logger.error(f"Failed to list deployments: {e}")
+        return ""
+
+
+def _deploy_via_file_upload(
+    project_name: str,
+    codebase: dict[str, str],
+    headers: dict,
+) -> str:
+    """Fallback: deploy via direct file upload with static-site settings.
+
+    Sets installCommand and buildCommand to empty strings so Vercel
+    doesn't try to run `npm install` on a vanilla HTML/CSS/JS project.
+
+    Returns:
+        The live URL, or "" on failure.
+    """
+    logger.info("Using file-upload deployment (static-site mode)...")
+
+    # Ensure the project exists
+    try:
+        resp = requests.get(
+            f"{VERCEL_API}/v9/projects/{project_name}",
+            headers=headers,
+        )
+        if resp.status_code == 404:
+            create_resp = requests.post(
+                f"{VERCEL_API}/v10/projects",
+                headers=headers,
+                json={
+                    "name": project_name,
+                    "framework": None,
+                    "installCommand": "",
+                    "buildCommand": "",
+                    "outputDirectory": "",
+                },
+            )
+            create_resp.raise_for_status()
+            logger.info(f"Created Vercel project '{project_name}' (static).")
+    except requests.RequestException as e:
+        logger.error(f"Vercel project setup failed: {e}")
+        return ""
+
+    # Build files payload
+    files_payload = []
+    for filepath, content in codebase.items():
+        # Skip binary placeholder files (e.g. fake .png from LLM)
+        if filepath.endswith((".png", ".jpg", ".jpeg", ".gif", ".ico", ".svg")):
+            if len(content) < 200:
+                logger.info(f"Skipping placeholder binary file: {filepath}")
+                continue
+        encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
+        files_payload.append({
+            "file": filepath,
+            "data": encoded,
+            "encoding": "base64",
+        })
+
+    # Create the deployment with explicit static-site settings
+    deploy_payload = {
+        "name": project_name,
+        "files": files_payload,
+        "target": "production",
+        "projectSettings": {
+            "framework": None,
+            "installCommand": "",
+            "buildCommand": "",
+            "outputDirectory": "",
+        },
+    }
+
+    try:
+        deploy_resp = requests.post(
+            f"{VERCEL_API}/v13/deployments",
+            headers=headers,
+            json=deploy_payload,
+        )
+        deploy_resp.raise_for_status()
+        deploy_data = deploy_resp.json()
+
+        deployment_id = deploy_data.get("id", "")
+        deployment_url = deploy_data.get("url", "")
+        state = deploy_data.get("readyState", deploy_data.get("status", ""))
+
+        logger.info(
+            f"File-upload deployment created: id={deployment_id}, "
+            f"url={deployment_url}, state={state}"
+        )
+
+        if not deployment_id:
+            return f"https://{deployment_url}" if deployment_url else ""
+
+        return _poll_vercel_deployment(deployment_id, headers)
+
+    except requests.RequestException as e:
+        logger.error(f"File-upload deployment failed: {e}")
+        try:
+            logger.error(f"Response: {deploy_resp.text}")
+        except Exception:
+            pass
+        return ""
+
+
 def devops_office(state: OfficeState) -> dict:
-    """DevOps node: write files locally, generate report, and push to GitHub."""
+    """DevOps node: write files locally, generate report, push to GitHub, and deploy to Vercel."""
 
     logger.info("=== DEVOPS OFFICE — Entering ===")
     logger.info(
@@ -116,13 +465,6 @@ def devops_office(state: OfficeState) -> dict:
     
     # Remove existing directory with proper error handling for Windows
     if project_dir.exists():
-<<<<<<< Updated upstream
-        def _force_remove_readonly(func, path, _exc_info):
-            """Windows: clear read-only flag on .git files before retrying."""
-            os.chmod(path, 0o777)
-            func(path)
-        shutil.rmtree(project_dir, onerror=_force_remove_readonly)
-=======
         try:
             # On Windows, we need to handle read-only files and git objects
             def handle_remove_readonly(func, path, exc):
@@ -145,7 +487,6 @@ def devops_office(state: OfficeState) -> dict:
             project_dir.rename(backup_dir)
             logger.info(f"Renamed old directory to {backup_name}")
     
->>>>>>> Stashed changes
     project_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"  {Fore.CYAN}📁 Writing files to:{Style.RESET_ALL} {project_dir}\n")
@@ -160,10 +501,7 @@ def devops_office(state: OfficeState) -> dict:
 
     print(f"\n  {Fore.GREEN}✅ All {len(codebase)} files written locally.{Style.RESET_ALL}\n")
 
-    # ── Step 2: Generate REPORT.md ──────────────────────────────
-    # Calculate approximate total elapsed (from first log timestamp)
-    office_elapsed_so_far = time.time() - office_start
-    # Use a rough estimate — we'll update after git push
+    # ── Step 2: Generate initial REPORT.md ──────────────────────
     report_content = _generate_report(state, total_elapsed=0)
     report_path = project_dir / "REPORT.md"
     report_path.write_text(report_content, encoding="utf-8")
@@ -171,7 +509,7 @@ def devops_office(state: OfficeState) -> dict:
     logger.info("Generated REPORT.md in project directory")
     logs.append("[DEVOPS] Generated REPORT.md")
 
-    # ── Step 3: Create GitHub repo ──────────────────────────────
+    # ── Step 3: Create GitHub repo & push ───────────────────────
     github_url = ""
 
     if not GITHUB_TOKEN or not GITHUB_OWNER:
@@ -182,91 +520,133 @@ def devops_office(state: OfficeState) -> dict:
         print(f"  {Fore.YELLOW}⚠️  {msg}{Style.RESET_ALL}")
         logger.warning(msg)
         logs.append(msg)
-
-        # Update REPORT.md with final timing
-        office_elapsed = time.time() - office_start
-        report_content = _generate_report(state, total_elapsed=office_elapsed)
-        report_path.write_text(report_content, encoding="utf-8")
-
-        return {"github_url": "", "execution_logs": logs}
-
-    try:
-        print(f"  {Fore.CYAN}🔗 Creating GitHub repo...{Style.RESET_ALL}")
-        logger.info("Creating GitHub repo...")
-        g = Github(GITHUB_TOKEN)
-        user = g.get_user()
-
-        # Try to create the repo (if it already exists, we'll use it)
+    else:
         try:
-            repo = user.create_repo(
-                project_name,
-                description=f"Generated by AI Office Chain: {state['project_goal'][:100]}",
-                private=False,
-                auto_init=False,
-            )
-            print(f"  {Fore.GREEN}✅ Repo created:{Style.RESET_ALL} {repo.html_url}")
-            logger.info(f"Repo created: {repo.html_url}")
-        except GithubException as e:
-            if e.status == 422:  # Already exists
-                repo = user.get_repo(project_name)
-                print(f"  {Fore.YELLOW}⚠️  Repo exists, using:{Style.RESET_ALL} {repo.html_url}")
-                logger.info(f"Repo already exists, using: {repo.html_url}")
-            else:
-                raise
+            print(f"  {Fore.CYAN}🔗 Creating GitHub repo...{Style.RESET_ALL}")
+            logger.info("Creating GitHub repo...")
+            g = Github(GITHUB_TOKEN)
+            user = g.get_user()
 
-        github_url = repo.html_url
-        logs.append(f"[DEVOPS] GitHub repo: {github_url}")
+            # Try to create the repo (if it already exists, we'll use it)
+            try:
+                repo = user.create_repo(
+                    project_name,
+                    description=f"Generated by AI Office Chain: {state['project_goal'][:100]}",
+                    private=False,
+                    auto_init=False,
+                )
+                print(f"  {Fore.GREEN}✅ Repo created:{Style.RESET_ALL} {repo.html_url}")
+                logger.info(f"Repo created: {repo.html_url}")
+            except GithubException as e:
+                if e.status == 422:  # Already exists
+                    repo = user.get_repo(project_name)
+                    print(f"  {Fore.YELLOW}⚠️  Repo exists, using:{Style.RESET_ALL} {repo.html_url}")
+                    logger.info(f"Repo already exists, using: {repo.html_url}")
+                else:
+                    raise
 
-        # ── Step 4: Update REPORT.md with final timing + git push ─
-        office_elapsed = time.time() - office_start
-        report_content = _generate_report(state, total_elapsed=office_elapsed)
-        report_path.write_text(report_content, encoding="utf-8")
+            github_url = repo.html_url
+            logs.append(f"[DEVOPS] GitHub repo: {github_url}")
 
-        print(f"  {Fore.CYAN}📤 Pushing to GitHub...{Style.RESET_ALL}")
-        logger.info("Initializing git and pushing...")
+            # Update REPORT.md with timing before git push
+            office_elapsed = time.time() - office_start
+            report_content = _generate_report(state, total_elapsed=office_elapsed)
+            report_path.write_text(report_content, encoding="utf-8")
 
-        git_repo = GitRepo.init(project_dir)
-        # Force-add every generated file (bypasses the project's .gitignore)
-        for filepath in codebase:
-            git_repo.git.add(filepath, force=True)
-        git_repo.git.add("REPORT.md", force=True)
-        git_repo.index.commit("🚀 Initial commit — generated by AI Office Chain")
+            print(f"  {Fore.CYAN}📤 Pushing to GitHub...{Style.RESET_ALL}")
+            logger.info("Initializing git and pushing...")
 
-        # Set up remote
-        remote_url = f"https://{GITHUB_TOKEN}@github.com/{GITHUB_OWNER}/{project_name}.git"
+            git_repo = GitRepo.init(project_dir)
+            # Force-add every generated file (bypasses the project's .gitignore)
+            for filepath in codebase:
+                git_repo.git.add(filepath, force=True)
+            git_repo.git.add("REPORT.md", force=True)
+            git_repo.index.commit("🚀 Initial commit — generated by AI Office Chain")
 
-        if "origin" in [r.name for r in git_repo.remotes]:
-            git_repo.delete_remote("origin")
-        origin = git_repo.create_remote("origin", remote_url)
+            # Set up remote
+            remote_url = f"https://{GITHUB_TOKEN}@github.com/{GITHUB_OWNER}/{project_name}.git"
 
-        # Push
-        origin.push(refspec="HEAD:refs/heads/main", force=True)
+            if "origin" in [r.name for r in git_repo.remotes]:
+                git_repo.delete_remote("origin")
+            origin = git_repo.create_remote("origin", remote_url)
 
-        print(f"  {Fore.GREEN}✅ Pushed successfully!{Style.RESET_ALL}")
-        logger.info(f"Pushed to {github_url}")
-        logs.append(f"[DEVOPS] Pushed to {github_url}")
+            # Push
+            origin.push(refspec="HEAD:refs/heads/main", force=True)
 
-    except Exception as e:
-        msg = f"[DEVOPS] GitHub error: {str(e)}"
-        print(f"  {Fore.RED}❌ {msg}{Style.RESET_ALL}")
-        logger.error(msg)
+            print(f"  {Fore.GREEN}✅ Pushed successfully!{Style.RESET_ALL}")
+            logger.info(f"Pushed to {github_url}")
+            logs.append(f"[DEVOPS] Pushed to {github_url}")
+
+        except Exception as e:
+            msg = f"[DEVOPS] GitHub error: {str(e)}"
+            print(f"  {Fore.RED}❌ {msg}{Style.RESET_ALL}")
+            logger.error(msg)
+            logs.append(msg)
+
+    # ── Step 4: Deploy to Vercel ────────────────────────────────
+    vercel_url = ""
+
+    if not VERCEL_TOKEN:
+        msg = "[DEVOPS] VERCEL_TOKEN not set. Skipping Vercel deployment."
+        print(f"  {Fore.YELLOW}⚠️  {msg}{Style.RESET_ALL}")
+        logger.warning(msg)
         logs.append(msg)
+    else:
+        print(f"\n  {Fore.MAGENTA}▲ Deploying to Vercel...{Style.RESET_ALL}")
+        logger.info("Starting Vercel deployment...")
+
+        vercel_url = _deploy_to_vercel(
+            project_name=project_name,
+            codebase=codebase,
+            project_goal=state.get("project_goal", ""),
+            github_owner=GITHUB_OWNER,
+        )
+
+        if vercel_url:
+            print(f"  {Fore.GREEN}✅ Vercel deployment live:{Style.RESET_ALL} {vercel_url}")
+            logs.append(f"[DEVOPS] Vercel live: {vercel_url}")
+        else:
+            msg = "[DEVOPS] Vercel deployment failed — check logs for details."
+            print(f"  {Fore.RED}❌ {msg}{Style.RESET_ALL}")
+            logger.error(msg)
+            logs.append(msg)
+
+    # ── Step 5: Final REPORT.md with all URLs ───────────────────
+    office_elapsed = time.time() - office_start
+    report_content = _generate_report(
+        state, total_elapsed=office_elapsed, vercel_url=vercel_url
+    )
+    report_path.write_text(report_content, encoding="utf-8")
+
+    # If we already pushed to GitHub, push the updated REPORT.md too
+    if github_url:
+        try:
+            git_repo = GitRepo(project_dir)
+            git_repo.git.add("REPORT.md", force=True)
+            git_repo.index.commit("📝 Update REPORT.md with Vercel deployment URL")
+            origin = git_repo.remote("origin")
+            origin.push(refspec="HEAD:refs/heads/main", force=True)
+            logger.info("Pushed updated REPORT.md with Vercel URL to GitHub.")
+        except Exception as e:
+            logger.warning(f"Could not push updated REPORT.md: {e}")
 
     # ── Summary ─────────────────────────────────────────────────
-    office_elapsed = time.time() - office_start
     logger.info(
         f"=== DEVOPS OFFICE — Exiting ({office_elapsed:.2f}s) | "
-        f"github_url='{github_url}' ==="
+        f"github_url='{github_url}' | vercel_url='{vercel_url}' ==="
     )
 
     print(f"\n  {Fore.GREEN}{'─'*50}")
     if github_url:
-        print(f"  🎉 Project deployed: {github_url}")
-    else:
+        print(f"  🎉 GitHub:  {github_url}")
+    if vercel_url:
+        print(f"  🌐 Vercel:  {vercel_url}")
+    if not github_url and not vercel_url:
         print(f"  📁 Project saved locally: {project_dir}")
     print(f"  {'─'*50}{Style.RESET_ALL}\n")
 
     return {
         "github_url": github_url,
+        "vercel_url": vercel_url,
         "execution_logs": logs,
     }

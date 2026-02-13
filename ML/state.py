@@ -39,6 +39,7 @@ class OfficeState(TypedDict):
 
     # ── Set by DevOps Office ─────────────────────────────────────
     github_url: str  # Final repo URL
+    vercel_url: str  # Vercel deployment URL
 
     # ── Shared across all offices ────────────────────────────────
     execution_logs: Annotated[list[str], operator.add]  # Append-only audit trail
