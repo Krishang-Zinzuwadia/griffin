@@ -62,11 +62,17 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   } = useAuthStore();
 
   const [githubInput, setGithubInput] = useState("");
-  const [showToken, setShowToken] = useState(false);
+  const [showGithubToken, setShowGithubToken] = useState(false);
   const [githubLoading, setGithubLoading] = useState(false);
   const [githubError, setGithubError] = useState<string | null>(null);
   const [githubSuccess, setGithubSuccess] = useState<string | null>(null);
+
+  const [vercelInput, setVercelInput] = useState("");
+  const [showVercelToken, setShowVercelToken] = useState(false);
   const [vercelLoading, setVercelLoading] = useState(false);
+  const [vercelError, setVercelError] = useState<string | null>(null);
+  const [vercelSuccess, setVercelSuccess] = useState<string | null>(null);
+
   const [disconnecting, setDisconnecting] = useState<
     "vercel" | "github" | null
   >(null);
@@ -78,26 +84,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }
   }, [open, hydrateFromServer]);
 
-  // Check for Vercel auth redirect on mount
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const vercelAuth = params.get("vercel_auth");
-    const authError = params.get("auth_error");
 
-    if (vercelAuth === "success") {
-      // Fetch user info now that we have the token
-      hydrateFromServer();
-      // Clean URL
-      window.history.replaceState({}, "", window.location.pathname);
-      onOpenChange(true);
-    }
-
-    if (authError) {
-      setGithubError(decodeURIComponent(authError));
-      window.history.replaceState({}, "", window.location.pathname);
-      onOpenChange(true);
-    }
-  }, [hydrateFromServer, onOpenChange]);
 
   /* ---- GitHub PAT ---- */
 
@@ -145,19 +132,45 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }
   };
 
-  /* ---- Vercel ---- */
+  /* ---- Vercel PAT ---- */
 
-  const handleVercelSignIn = () => {
+  const handleSaveVercelToken = async () => {
+    if (!vercelInput.trim()) return;
+
     setVercelLoading(true);
-    // Redirect to our API route which redirects to Vercel OAuth
-    window.location.href = "/api/auth/vercel";
+    setVercelError(null);
+    setVercelSuccess(null);
+
+    try {
+      const res = await fetch("/api/auth/vercel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: vercelInput.trim() }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setVercelError(data.error || "Failed to save token.");
+        return;
+      }
+
+      setVercelAuth(data.user, vercelInput.trim());
+      setVercelSuccess(`Connected as ${data.user.name ?? data.user.username}`);
+      setVercelInput("");
+    } catch {
+      setVercelError("Network error — is the dev server running?");
+    } finally {
+      setVercelLoading(false);
+    }
   };
 
   const handleDisconnectVercel = async () => {
     setDisconnecting("vercel");
     try {
-      await fetch("/api/auth/vercel/disconnect", { method: "DELETE" });
+      await fetch("/api/auth/vercel", { method: "DELETE" });
       clearVercelAuth();
+      setVercelSuccess(null);
     } catch {
       /* ignore */
     } finally {
@@ -217,22 +230,82 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 </Button>
               </div>
             ) : (
-              <Button
-                onClick={handleVercelSignIn}
-                disabled={vercelLoading}
-                className="w-full gap-2 bg-white text-black hover:bg-white/90"
-              >
-                {vercelLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <VercelLogo className="h-3.5 w-3.5" />
-                )}
-                Sign in with Vercel
-              </Button>
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="vercel-token" className="text-xs">
+                    Personal Access Token
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="vercel-token"
+                      type={showVercelToken ? "text" : "password"}
+                      placeholder="Paste your Vercel token…"
+                      value={vercelInput}
+                      onChange={(e) => {
+                        setVercelInput(e.target.value);
+                        setVercelError(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveVercelToken();
+                      }}
+                      className="pr-10 font-mono text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowVercelToken(!showVercelToken)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {showVercelToken ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Error / success messages */}
+                <AnimatePresence mode="wait">
+                  {vercelError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      className="flex items-center gap-1.5 text-xs text-destructive"
+                    >
+                      <XCircle className="h-3.5 w-3.5 shrink-0" />
+                      {vercelError}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <Button
+                  onClick={handleSaveVercelToken}
+                  disabled={vercelLoading || !vercelInput.trim()}
+                  className="w-full gap-2"
+                  variant="secondary"
+                >
+                  {vercelLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <VercelLogo className="h-3.5 w-3.5" />
+                  )}
+                  Save Token
+                </Button>
+              </>
             )}
 
             <p className="text-xs text-muted-foreground">
-              Used to deploy projects to your Vercel account.
+              Used to deploy projects to your Vercel account.{" "}
+              <a
+                href="https://vercel.com/account/tokens"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-0.5 text-primary hover:underline"
+              >
+                Create one
+                <ExternalLink className="h-3 w-3" />
+              </a>
             </p>
           </section>
 
@@ -285,7 +358,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   <div className="relative">
                     <Input
                       id="github-token"
-                      type={showToken ? "text" : "password"}
+                      type={showGithubToken ? "text" : "password"}
                       placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
                       value={githubInput}
                       onChange={(e) => {
@@ -299,10 +372,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     />
                     <button
                       type="button"
-                      onClick={() => setShowToken(!showToken)}
+                      onClick={() => setShowGithubToken(!showGithubToken)}
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                     >
-                      {showToken ? (
+                      {showGithubToken ? (
                         <EyeOff className="h-4 w-4" />
                       ) : (
                         <Eye className="h-4 w-4" />
