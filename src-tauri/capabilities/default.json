@@ -6,6 +6,17 @@
     "main"
   ],
   "permissions": [
-    "core:default"
+    "core:default",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "run-python",
+          "cmd": "python",
+          "args": true
+        }
+      ]
+    },
+    "shell:allow-open"
   ]
 }

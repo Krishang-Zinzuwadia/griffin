@@ -27,7 +27,7 @@ def main():
     print(f"\n{Fore.WHITE}{Style.BRIGHT}")
     print("╔══════════════════════════════════════════════════════════╗")
     print("║          🏢  AI OFFICE CHAIN  —  Multi-Agent System     ║")
-    print("║          Sequential LangGraph + Gemini Pipeline         ║")
+    print("║          using Sequential LangGraph (A2A)                ║")
     print("╚══════════════════════════════════════════════════════════╝")
     print(f"{Style.RESET_ALL}")
 
@@ -65,7 +65,7 @@ def main():
 
     final_state = chain.invoke(initial_state)
 
-    # ── Summary ──────────────────────────────────────────────────
+    #Summary 
     elapsed = time.time() - start_time
     logger.info(f"Pipeline complete | Elapsed: {elapsed:.2f}s")
 
