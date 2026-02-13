@@ -12,7 +12,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { readFile, writeFile } from "fs/promises";
 import { join } from "path";
 
-const ENV_PATH = join(process.cwd(), ".env.local");
+// Stored in /secrets at project root (temporary — will be refactored)
+const ENV_PATH = join(process.cwd(), "..", "secrets", ".env.local");
 
 async function readEnvFile(): Promise<string> {
   try {

@@ -10,7 +10,8 @@ import { join } from "path";
 
 async function readEnvLocal(): Promise<Record<string, string>> {
   try {
-    const envPath = join(process.cwd(), ".env.local");
+    // Stored in /secrets at project root (temporary — will be refactored)
+    const envPath = join(process.cwd(), "..", "secrets", ".env.local");
     const content = await readFile(envPath, "utf-8");
     const vars: Record<string, string> = {};
     for (const line of content.split("\n")) {
