@@ -11,7 +11,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useOrchestratorStore } from "@/lib/orchestrator-store";
 
 interface TerminalLine {
   id: string;
@@ -197,6 +199,7 @@ const lineIcons: Record<TerminalLine["type"], LucideIcon | null> = {
 };
 
 export function GodModeTerminal() {
+  const { terminalLogs, clearTerminal } = useOrchestratorStore();
   const [lines, setLines] = useState<TerminalLine[]>(initialLines);
   const [inputValue, setInputValue] = useState("");
   const [history, setHistory] = useState<string[]>([]);
@@ -204,9 +207,44 @@ export function GodModeTerminal() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Function to detect and linkify URLs
+  const linkifyContent = (content: string) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = content.split(urlRegex);
+    
+    return parts.map((part, index) => {
+      if (urlRegex.test(part)) {
+        return (
+          <a
+            key={index}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {part}
+          </a>
+        );
+      }
+      return part;
+    });
+  };
+
+  // Merge terminal logs from ML pipeline with local command output
+  const allLines = [
+    ...lines,
+    ...terminalLogs.map((log, idx) => ({
+      id: `ml-${idx}`,
+      type: (log.includes('[ERROR]') ? 'error' : 'output') as TerminalLine['type'],
+      content: log,
+      timestamp: new Date(),
+    })),
+  ];
+
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [lines]);
+  }, [allLines.length]);
 
   const executeCommand = (cmd: string) => {
     const trimmedCmd = cmd.trim().toLowerCase();
@@ -226,6 +264,7 @@ export function GodModeTerminal() {
     // Handle commands
     if (trimmedCmd === "/clear") {
       setLines([]);
+      clearTerminal();
       return;
     }
 
@@ -287,7 +326,7 @@ export function GodModeTerminal() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-background text-foreground font-mono text-sm">
+    <div className="h-full flex flex-col bg-background text-foreground text-sm" style={{ fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace' }}>
       {/* Header */}
       <div className="h-12 border-b border-border/20 flex items-center justify-between px-4 bg-card/5">
         <div className="flex items-center gap-2">
@@ -303,9 +342,17 @@ export function GodModeTerminal() {
       </div>
 
       {/* Output Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-1">
-        {lines.map((line) => {
+      <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-0">
+        {allLines.map((line) => {
           const Icon = lineIcons[line.type];
+          
+          // Check if line contains folder structure or box drawing characters
+          const hasBoxChars = /[─│┌┐└┘├┤┬┴┼═║╔╗╚╝╠╣╦╩╬]/.test(line.content);
+          const isStructureLine = /^[\s│├└─]+/.test(line.content) || 
+                                  line.content.includes('├──') || 
+                                  line.content.includes('└──') ||
+                                  line.content.includes('│') ||
+                                  hasBoxChars;
 
           return (
             <motion.div
@@ -315,7 +362,11 @@ export function GodModeTerminal() {
               className={cn("flex items-start gap-2", lineColors[line.type])}
             >
               {Icon && <Icon className="w-4 h-4 mt-0.5 shrink-0" />}
-              <span className="break-all">{line.content}</span>
+              {isStructureLine ? (
+                <pre className="whitespace-pre font-mono text-sm m-0 p-0" style={{ fontFamily: 'inherit' }}>{line.content}</pre>
+              ) : (
+                <span className="break-all">{linkifyContent(line.content)}</span>
+              )}
             </motion.div>
           );
         })}
@@ -323,7 +374,7 @@ export function GodModeTerminal() {
       </div>
 
       {/* Input Area */}
-      <div className="p-4 border-t border-border/20">
+      <div className="p-4 border-t border-border/20 flex-shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-accent">root@griffin</span>
           <span className="text-muted-foreground">:</span>
@@ -343,7 +394,16 @@ export function GodModeTerminal() {
       </div>
 
       {/* Quick Commands */}
-      <div className="px-4 pb-4 flex gap-2 flex-wrap">
+      <div className="px-4 pb-4 flex gap-2 flex-wrap flex-shrink-0">
+        <button
+          onClick={() => {
+            setLines([]);
+            clearTerminal();
+          }}
+          className="px-2 py-1 text-xs rounded bg-muted/20 hover:bg-muted/30 transition-colors"
+        >
+          Clear All
+        </button>
         {Object.keys(commandResponses)
           .filter((cmd) => !cmd.includes(" "))
           .map((cmd) => (

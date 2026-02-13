@@ -68,7 +68,9 @@ interface OrchestratorState {
   connected: boolean;
   chatMessages: ChatMessage[];
   agentMessages: ChatMessage[];
+  terminalLogs: string[];
   artifacts: CodeArtifact[];
+  projectFiles: string[];
   activeArtifactId: string | null;
   projectGithubUrl: string | null;
   projectName: string | null;
@@ -80,6 +82,7 @@ interface OrchestratorState {
   sendEnvelope: (envelope: Envelope) => void;
   setActiveArtifact: (id: string) => void;
   clearArtifacts: () => void;
+  clearTerminal: () => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -119,7 +122,9 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
   connected: false,
   chatMessages: [],
   agentMessages: [],
+  terminalLogs: [],
   artifacts: [],
+  projectFiles: [],
   activeArtifactId: null,
   projectGithubUrl: null,
   projectName: null,
@@ -138,7 +143,12 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
       projectGithubUrl: null,
       projectName: null,
       projectRepoName: null,
+      projectFiles: [],
     });
+  },
+
+  clearTerminal() {
+    set({ terminalLogs: [] });
   },
 
   /* ---- send a raw envelope ---- */
@@ -167,18 +177,10 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
       ],
     }));
 
-    // 2) Send to PM wrapper via the orchestrator
-    const envelope: Envelope = {
-      type: "EVENT",
-      src: _registeredId ?? "ui-observer",
-      dst: "pm-1",
-      ts: Date.now(),
-      payload: {
-        kind: "CHAT_MESSAGE",
-        text,
-      },
-    };
-    get().sendEnvelope(envelope);
+    // 2) Send prompt directly to ML service
+    if (_ws && _ws.readyState === WebSocket.OPEN) {
+      _ws.send(JSON.stringify({ type: 'prompt', data: text }));
+    }
   },
 
   /* ---- connect to the orchestrator WebSocket ---- */
@@ -189,79 +191,116 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
       return;
     }
 
-    // Derive HTTP URL for /status polling
-    const httpBase = url.replace(/^ws/, "http").replace(/\/$/, "");
-
     try {
       const ws = new WebSocket(url);
       _ws = ws;
 
       ws.addEventListener("open", () => {
-        console.log("[orchestrator] connected to", url);
+        console.log("[ml-service] connected to", url);
         set({ connected: true });
-
-        // Register as a UI observer
-        const registerEnvelope: Envelope = {
-          type: "REGISTER",
-          id: "ui-observer",
-          ts: Date.now(),
-          payload: { name: "Griffin UI", type: "ui-observer" },
-        };
-        ws.send(JSON.stringify(registerEnvelope));
-
-        // Start heartbeat every 2 seconds
-        if (_heartbeatTimer) clearInterval(_heartbeatTimer);
-        _heartbeatTimer = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(
-              JSON.stringify({
-                type: "HEARTBEAT",
-                src: _registeredId ?? "ui-observer",
-                ts: Date.now(),
-              }),
-            );
-          }
-        }, 2000);
-
-        // Poll /status every 3 seconds for full wrapper list sync
-        if (_statusPollTimer) clearInterval(_statusPollTimer);
-        pollWrapperStatus(`${httpBase}/status`);
-        _statusPollTimer = setInterval(
-          () => pollWrapperStatus(`${httpBase}/status`),
-          3000,
-        );
       });
 
       ws.addEventListener("message", (event) => {
-        let env: Envelope;
+        let msg: { type: string; data: string; githubUrl?: string; projectName?: string };
         try {
-          env = JSON.parse(String(event.data)) as Envelope;
+          msg = JSON.parse(String(event.data));
         } catch {
-          console.warn("[orchestrator] invalid message", event.data);
+          console.warn("[ml-service] invalid message", event.data);
           return;
         }
 
-        handleEnvelope(env, set, get);
+        // Handle progress updates
+        if (msg.type === 'progress') {
+          const logLine = msg.data;
+          
+          set((state) => ({
+            agentMessages: [
+              ...state.agentMessages,
+              {
+                id: `agent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                author: 'ML Pipeline',
+                avatar: 'ML',
+                content: logLine,
+                timestamp: new Date(),
+                isUser: false,
+              },
+            ],
+            terminalLogs: [...state.terminalLogs, logLine],
+          }));
+        }
+
+        // Handle raw terminal output
+        if (msg.type === 'terminal') {
+          set((state) => ({
+            terminalLogs: [...state.terminalLogs, msg.data],
+          }));
+        }
+
+        // Handle file information
+        if (msg.type === 'file') {
+          const fileData = msg.data as { filename: string; language: string; path: string };
+          set((state) => ({
+            projectFiles: [...state.projectFiles, fileData.filename],
+          }));
+        }
+
+        // Handle completion
+        if (msg.type === 'complete') {
+          const files = (msg as any).files as string[] | undefined;
+          set((state) => ({
+            chatMessages: [
+              ...state.chatMessages,
+              {
+                id: `msg-${Date.now()}`,
+                author: 'Griffin',
+                avatar: 'GR',
+                content: msg.data,
+                timestamp: new Date(),
+                isUser: false,
+              },
+            ],
+            projectGithubUrl: msg.githubUrl || null,
+            projectName: msg.projectName || null,
+            projectFiles: files || state.projectFiles,
+          }));
+        }
+
+        // Handle errors
+        if (msg.type === 'error') {
+          set((state) => ({
+            chatMessages: [
+              ...state.chatMessages,
+              {
+                id: `msg-${Date.now()}`,
+                author: 'Griffin',
+                avatar: 'GR',
+                content: msg.data,
+                timestamp: new Date(),
+                isUser: false,
+              },
+            ],
+          }));
+        }
       });
 
       ws.addEventListener("close", () => {
-        console.log("[orchestrator] disconnected");
+        console.log("[ml-service] disconnected");
         cleanup();
         set({ connected: false });
 
         // Attempt to reconnect after 3 seconds
         if (_reconnectTimer) clearTimeout(_reconnectTimer);
         _reconnectTimer = setTimeout(() => {
-          console.log("[orchestrator] attempting reconnect…");
+          console.log("[ml-service] attempting reconnect…");
           get().connect(url);
         }, 3000);
       });
 
       ws.addEventListener("error", (err) => {
-        console.error("[orchestrator] WebSocket error", err);
+        console.error("[ml-service] WebSocket error", err);
       });
     } catch (err) {
-      console.error("[orchestrator] failed to connect", err);
+      console.error("[ml-service] failed to connect", err);
     }
   },
 

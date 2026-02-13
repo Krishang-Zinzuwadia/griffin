@@ -113,12 +113,39 @@ def devops_office(state: OfficeState) -> dict:
 
     # ── Step 1: Write files to sandbox ──────────────────────────
     project_dir = SANDBOX_DIR / project_name
+    
+    # Remove existing directory with proper error handling for Windows
     if project_dir.exists():
+<<<<<<< Updated upstream
         def _force_remove_readonly(func, path, _exc_info):
             """Windows: clear read-only flag on .git files before retrying."""
             os.chmod(path, 0o777)
             func(path)
         shutil.rmtree(project_dir, onerror=_force_remove_readonly)
+=======
+        try:
+            # On Windows, we need to handle read-only files and git objects
+            def handle_remove_readonly(func, path, exc):
+                """Error handler for Windows readonly files."""
+                import os
+                import stat
+                if not os.access(path, os.W_OK):
+                    os.chmod(path, stat.S_IWUSR)
+                    func(path)
+                else:
+                    raise
+            
+            shutil.rmtree(project_dir, onerror=handle_remove_readonly)
+        except Exception as e:
+            logger.warning(f"Could not remove existing directory: {e}")
+            # Try alternative: rename old directory and create new one
+            import random
+            backup_name = f"{project_name}_old_{random.randint(1000, 9999)}"
+            backup_dir = SANDBOX_DIR / backup_name
+            project_dir.rename(backup_dir)
+            logger.info(f"Renamed old directory to {backup_name}")
+    
+>>>>>>> Stashed changes
     project_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"  {Fore.CYAN}📁 Writing files to:{Style.RESET_ALL} {project_dir}\n")
