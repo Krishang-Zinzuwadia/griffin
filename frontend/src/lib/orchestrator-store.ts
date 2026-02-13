@@ -211,21 +211,51 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
 
         // Handle progress updates
         if (msg.type === 'progress') {
-          const logLine = msg.data;
+          let logLine = msg.data;
+          
+          // Only show "ML Pipeline" as author for the starting message
+          // Otherwise extract office name from content (e.g., "🏢 CEO OFFICE" -> "CEO OFFICE")
+          let author = 'ML Pipeline';
+          let avatar = 'ML';
+          
+          if (!logLine.includes('Starting ML pipeline for:')) {
+            // Try to extract office name from patterns like "🏢 CEO OFFICE — ..." or "⚡️ DEVOPS OFFICE — ..."
+            const officeMatch = logLine.match(/^([🏢⚡️✅⏳🔧🚀📁🔗📤📝❌⚠️])\s*([A-Z\s]+(?:OFFICE|DESIGN|API|SECURITY|CEO|PM|DEVOPS))\s*[—\-:]\s*/);
+            
+            if (officeMatch) {
+              // Extract author from the matched pattern
+              author = officeMatch[2].trim();
+              avatar = author.slice(0, 2).toUpperCase();
+              // Remove the prefix from the content to avoid repetition
+              logLine = logLine.replace(officeMatch[0], '').trim();
+            } else {
+              // Fallback to other patterns
+              const fallbackMatch = logLine.match(/\[([A-Z]+)\]/) ||
+                                   logLine.match(/([A-Z]+(?:\s+OFFICE)?)\s*[-—:]/);
+              if (fallbackMatch) {
+                author = fallbackMatch[1].trim();
+                avatar = author.slice(0, 2).toUpperCase();
+              } else {
+                // Default to System for other messages
+                author = 'System';
+                avatar = 'SY';
+              }
+            }
+          }
           
           set((state) => ({
             agentMessages: [
               ...state.agentMessages,
               {
                 id: `agent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                author: 'ML Pipeline',
-                avatar: 'ML',
+                author,
+                avatar,
                 content: logLine,
                 timestamp: new Date(),
                 isUser: false,
               },
             ],
-            terminalLogs: [...state.terminalLogs, logLine],
+            terminalLogs: [...state.terminalLogs, msg.data], // Keep original in terminal
           }));
         }
 
@@ -238,7 +268,7 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
 
         // Handle file information
         if (msg.type === 'file') {
-          const fileData = msg.data as { filename: string; language: string; path: string };
+          const fileData = (msg.data as unknown) as { filename: string; language: string; path: string };
           set((state) => ({
             projectFiles: [...state.projectFiles, fileData.filename],
           }));

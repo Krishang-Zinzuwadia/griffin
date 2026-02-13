@@ -23,10 +23,10 @@ const httpServer = createServer((req, res) => {
 
 const wss = new WebSocketServer({ server: httpServer });
 
-console.log(`🚀 ML Service starting on ws://0.0.0.0:${PORT}`);
+console.log(`ML Service starting on ws://0.0.0.0:${PORT}`);
 
 wss.on('connection', (ws: WebSocket) => {
-	console.log('✅ Frontend connected');
+	console.log('Frontend connected');
 
 	ws.on('message', (data: WebSocket.RawData) => {
 		let msg: Message;
@@ -39,12 +39,12 @@ wss.on('connection', (ws: WebSocket) => {
 
 		if (msg.type === 'prompt') {
 			const prompt = msg.data;
-			console.log(`📝 Received prompt: "${prompt}"`);
+			console.log(`Received prompt: "${prompt}"`);
 
 			// Send acknowledgment
 			ws.send(JSON.stringify({
 				type: 'progress',
-				data: `🚀 Starting ML pipeline for: "${prompt}"\n\nThis will take 30-60 seconds...`,
+				data: `Starting ML pipeline for: "${prompt}"\n\nThis will take 30-60 seconds...`,
 			}));
 
 			// Execute Python ML pipeline
@@ -53,7 +53,7 @@ wss.on('connection', (ws: WebSocket) => {
 			// Project root is 2 directories up from backend/ml-service
 			const projectRoot = resolve(__dirname, '..', '..');
 			
-			console.log(`📂 Running from: ${projectRoot}`);
+			console.log(`Running from: ${projectRoot}`);
 			
 			const mlProcess = spawn(pythonCmd, ['-m', 'ML.main', prompt], {
 				cwd: projectRoot,
@@ -128,7 +128,7 @@ wss.on('connection', (ws: WebSocket) => {
 					const fileMatches = stdoutBuffer.matchAll(/\[DEVOPS\] Wrote (.+)/g);
 					const files: string[] = [];
 					for (const match of fileMatches) {
-						files.push(match[1]);
+						if (match[1]) files.push(match[1]);
 					}
 
 					// Send file artifacts for workstation
@@ -157,8 +157,8 @@ wss.on('connection', (ws: WebSocket) => {
 					});
 
 					const successMsg = githubUrl
-						? `🎉 Project complete! **${projectName}** deployed with ${fileCount} files.\n\n[View on GitHub](${githubUrl})`
-						: `✅ Project complete! **${projectName}** generated with ${fileCount} files. Check ML/sandbox/`;
+						? `Project complete! **${projectName}** deployed with ${fileCount} files.\n\n[View on GitHub](${githubUrl})`
+						: `Project complete! **${projectName}** generated with ${fileCount} files. Check ML/sandbox/`;
 
 					ws.send(JSON.stringify({
 						type: 'complete',
@@ -168,14 +168,14 @@ wss.on('connection', (ws: WebSocket) => {
 						files,
 					}));
 
-					console.log(`✅ Pipeline complete: ${projectName}`);
+					console.log(`Pipeline complete: ${projectName}`);
 				} else {
 					const errorMsg = stderrBuffer || 'ML pipeline failed with unknown error';
 					ws.send(JSON.stringify({
 						type: 'error',
-						data: `❌ ML pipeline failed: ${errorMsg.slice(0, 200)}`,
+						data: `ML pipeline failed: ${errorMsg.slice(0, 200)}`,
 					}));
-					console.error(`❌ Pipeline failed:`, errorMsg);
+					console.error(`Pipeline failed:`, errorMsg);
 				}
 			});
 
@@ -185,9 +185,9 @@ wss.on('connection', (ws: WebSocket) => {
 
 				ws.send(JSON.stringify({
 					type: 'error',
-					data: `❌ Failed to start ML pipeline: ${err.message}. Make sure Python is installed.`,
+					data: `Failed to start ML pipeline: ${err.message}. Make sure Python is installed.`,
 				}));
-				console.error('❌ Spawn error:', err);
+				console.error('Spawn error:', err);
 				
 				// Clean up
 				try {
@@ -198,7 +198,7 @@ wss.on('connection', (ws: WebSocket) => {
 	});
 
 	ws.on('close', () => {
-		console.log('❌ Frontend disconnected');
+		console.log('Frontend disconnected');
 	});
 
 	ws.on('error', (err) => {
@@ -207,5 +207,5 @@ wss.on('connection', (ws: WebSocket) => {
 });
 
 httpServer.listen(PORT, () => {
-	console.log(`✅ ML Service ready on ws://0.0.0.0:${PORT}`);
+	console.log(`ML Service ready on ws://0.0.0.0:${PORT}`);
 });

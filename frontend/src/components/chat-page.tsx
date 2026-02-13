@@ -40,51 +40,6 @@ interface FileNode {
   status?: "working" | "done" | "pending";
 }
 
-const staticFileStructure: FileNode[] = [
-  {
-    name: "src",
-    type: "folder",
-    children: [
-      {
-        name: "components",
-        type: "folder",
-        children: [
-          {
-            name: "Dashboard.tsx",
-            type: "file",
-            assignedTo: "Frontend Design",
-            status: "pending",
-          },
-          {
-            name: "Charts.tsx",
-            type: "file",
-            assignedTo: "Frontend Design",
-            status: "pending",
-          },
-        ],
-      },
-      {
-        name: "api",
-        type: "folder",
-        children: [
-          {
-            name: "routes.ts",
-            type: "file",
-            assignedTo: "Backend API",
-            status: "pending",
-          },
-          {
-            name: "schema.ts",
-            type: "file",
-            assignedTo: "Backend API",
-            status: "pending",
-          },
-        ],
-      },
-    ],
-  },
-  { name: "package.json", type: "file", status: "done" },
-];
 
 function FileTree({ nodes, depth = 0 }: { nodes: FileNode[]; depth?: number }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
@@ -338,9 +293,7 @@ export function ChatPage() {
     return convertToNodes(root);
   };
 
-  const fileTreeNodes = projectFiles.length > 0 
-    ? buildFileTree(projectFiles) 
-    : staticFileStructure;
+  const fileTreeNodes = buildFileTree(projectFiles);
 
   return (
     <div className="h-full flex bg-background overflow-hidden">
@@ -415,7 +368,13 @@ export function ChatPage() {
             <span className="font-semibold text-sm">Project Files</span>
           </div>
           <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 min-h-0">
-            <FileTree nodes={fileTreeNodes} />
+            {fileTreeNodes.length > 0 ? (
+              <FileTree nodes={fileTreeNodes} />
+            ) : (
+              <p className="text-xs text-muted-foreground text-center mt-8">
+                No files yet. Start a project to see generated files here.
+              </p>
+            )}
           </div>
 
           <Separator />
