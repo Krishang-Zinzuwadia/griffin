@@ -220,18 +220,20 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
           
           if (!logLine.includes('Starting ML pipeline for:')) {
             // Try to extract office name from patterns like "🏢 CEO OFFICE — ..." or "⚡️ DEVOPS OFFICE — ..."
-            const officeMatch = logLine.match(/^([🏢⚡️✅⏳🔧🚀📁🔗📤📝❌⚠️])\s*([A-Z\s]+(?:OFFICE|DESIGN|API|SECURITY|CEO|PM|DEVOPS))\s*[—\-:]\s*/);
+            // Match at start of line OR after whitespace, with optional emoji prefix
+            const officeMatch = logLine.match(/^(?:[🏢⚡️✅⏳🔧🚀📁🔗📤📝❌⚠️])?\s*([A-Z][A-Z\s]*(?:OFFICE|DESIGN|API|SECURITY|CEO|PM|DEVOPS))\s*[—\-:]\s*/) ||
+                               logLine.match(/(?:^|\s)([A-Z][A-Z\s]*(?:OFFICE|DESIGN|API|SECURITY|CEO|PM|DEVOPS))\s*[—\-:]\s*/);
             
             if (officeMatch) {
               // Extract author from the matched pattern
-              author = officeMatch[2].trim();
+              author = officeMatch[1].trim();
               avatar = author.slice(0, 2).toUpperCase();
               // Remove the prefix from the content to avoid repetition
               logLine = logLine.replace(officeMatch[0], '').trim();
             } else {
-              // Fallback to other patterns
-              const fallbackMatch = logLine.match(/\[([A-Z]+)\]/) ||
-                                   logLine.match(/([A-Z]+(?:\s+OFFICE)?)\s*[-—:]/);
+              // Fallback: look for bracketed names or any ALL_CAPS word
+              const fallbackMatch = logLine.match(/\[([A-Z][A-Z_]+)\]/) ||
+                                   logLine.match(/\b(CEO|PM|DEVOPS|DESIGN|API|SECURITY)\b/);
               if (fallbackMatch) {
                 author = fallbackMatch[1].trim();
                 avatar = author.slice(0, 2).toUpperCase();
