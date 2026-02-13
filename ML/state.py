@@ -27,14 +27,25 @@ class OfficeState(TypedDict):
 
     # ── Set by CEO Office ────────────────────────────────────────
     project_name: str  # URL-safe slug for the project
+    active_offices: list[str]  # Which offices the CEO selected
     file_manifest: list[str]  # List of file paths to create
-    file_descriptions: dict[str, str]  # { "path": "what this file does" }
+    file_descriptions: Annotated[dict[str, str], merge_dicts]
 
-    # ── Set by Product Office ────────────────────────────────────
-    tech_stack: dict[str, str]  # { "language": "JavaScript", ... }
+    # ── Set by Product Manager ───────────────────────────────────
+    requirements: list[str]  # Feature requirements / user stories
+
+    # ── Set by Architect ─────────────────────────────────────────
+    tech_stack: dict[str, str]  # { "languages": [...], ... }
     folder_structure: str  # ASCII tree of the project layout
+    file_categories: dict[str, str]  # { "path": "frontend"|"backend"|"database" }
 
-    # ── Set by Engineering Office ────────────────────────────────
+    # ── Set by UI/UX Designer ────────────────────────────────────
+    design_system: dict  # Colors, fonts, spacing, component specs
+
+    # ── Set by API Designer ──────────────────────────────────────
+    api_schema: dict  # Endpoints, methods, request/response schemas
+
+    # ── Set by coding offices (Frontend/Backend/Database/QA/Security/TechWriter) ──
     codebase: Annotated[dict[str, str], merge_dicts]  # { "path": "code content" }
 
     # ── Set by DevOps Office ─────────────────────────────────────
