@@ -8,14 +8,26 @@ Takes the CEO's manifest and refines it:
 """
 
 import json
+import time
 from colorama import Fore, Style
 from ..state import OfficeState
 from ..config import get_llm
 from ..prompts import PRODUCT_SYSTEM, PRODUCT_HUMAN
+from ..utils import invoke_and_parse_json, validate_product_response
+from ..logger import get_logger
+
+logger = get_logger("product")
 
 
 def product_office(state: OfficeState) -> dict:
     """Product node: select tech stack and refine architecture."""
+
+    logger.info("=== PRODUCT OFFICE — Entering ===")
+    logger.info(
+        f"Input state: project_name='{state['project_name']}', "
+        f"files={len(state['file_manifest'])}"
+    )
+    office_start = time.time()
 
     print(f"\n{Fore.MAGENTA}{'='*60}")
     print(f"  🏗️  PRODUCT OFFICE — Architect")
@@ -34,21 +46,20 @@ def product_office(state: OfficeState) -> dict:
     ]
 
     print(f"  {Fore.MAGENTA}⏳ Designing architecture...{Style.RESET_ALL}")
-    response = llm.invoke(messages)
-    raw = response.content.strip()
 
-    # Clean potential markdown fences
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1]
-    if raw.endswith("```"):
-        raw = raw.rsplit("```", 1)[0]
-    raw = raw.strip()
+    # ── LLM call with retry + JSON parse with retry ──────────────
+    result = invoke_and_parse_json(
+        llm, messages,
+        max_retries=3,
+        office_name="PRODUCT",
+    )
 
-    result = json.loads(raw)
+    # ── Validate & sanitize ──────────────────────────────────────
+    result = validate_product_response(result, fallback_manifest=state["file_manifest"])
 
-    tech_stack = result.get("tech_stack", {})
-    folder_structure = result.get("folder_structure", "")
-    file_manifest = result.get("file_manifest", state["file_manifest"])
+    tech_stack = result["tech_stack"]
+    folder_structure = result["folder_structure"]
+    file_manifest = result["file_manifest"]
     file_descriptions = result.get("file_descriptions", state.get("file_descriptions", {}))
 
     print(f"  {Fore.GREEN}✅ Tech Stack:{Style.RESET_ALL}")
@@ -60,6 +71,12 @@ def product_office(state: OfficeState) -> dict:
     print(f"\n  {Fore.GREEN}✅ Final file count:{Style.RESET_ALL} {len(file_manifest)}")
     print()
 
+    office_elapsed = time.time() - office_start
+    logger.info(
+        f"=== PRODUCT OFFICE — Exiting ({office_elapsed:.2f}s) | "
+        f"tech_stack={list(tech_stack.keys())}, files={len(file_manifest)} ==="
+    )
+
     return {
         "tech_stack": tech_stack,
         "folder_structure": folder_structure,
@@ -67,6 +84,6 @@ def product_office(state: OfficeState) -> dict:
         "file_descriptions": file_descriptions,
         "execution_logs": [
             f"[PRODUCT] Architected with stack: {json.dumps(tech_stack)}. "
-            f"Final manifest: {len(file_manifest)} files."
+            f"Final manifest: {len(file_manifest)} files. ({office_elapsed:.1f}s)"
         ],
     }
