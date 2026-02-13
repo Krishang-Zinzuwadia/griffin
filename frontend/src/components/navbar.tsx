@@ -15,6 +15,7 @@ import {
   Terminal,
   Layers,
   Code2,
+  Settings,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,7 @@ interface DockItem {
 interface NavbarProps {
   activeView: string;
   onViewChange: (view: string) => void;
+  onSettingsClick?: () => void;
 }
 
 /**
@@ -95,7 +97,11 @@ function DockIcon({
  * Floating macOS-style dock navbar.
  * Pinned to the bottom-center of the viewport, with magnification on hover.
  */
-export function Navbar({ activeView, onViewChange }: NavbarProps) {
+export function Navbar({
+  activeView,
+  onViewChange,
+  onSettingsClick,
+}: NavbarProps) {
   const mouseX = useMotionValue(Infinity);
 
   const items: DockItem[] = [
@@ -130,7 +136,12 @@ export function Navbar({ activeView, onViewChange }: NavbarProps) {
       icon: Layers,
       onClick: () => onViewChange("multiverse"),
     },
-
+    {
+      id: "settings",
+      label: "Settings",
+      icon: Settings,
+      onClick: onSettingsClick,
+    },
   ];
 
   return (
@@ -147,6 +158,10 @@ export function Navbar({ activeView, onViewChange }: NavbarProps) {
         <div key={item.id} className="group flex items-center">
           {/* Separator before Canvas */}
           {idx === 1 && <div className="mr-1 h-5 w-px bg-white/15" />}
+          {/* Separator before Settings */}
+          {item.id === "settings" && (
+            <div className="mr-1 h-5 w-px bg-white/15" />
+          )}
           <div className="group flex items-center">
             <DockIcon
               item={item}

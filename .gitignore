@@ -99,6 +99,12 @@ frontend/next-env.d.ts
 !.env.example
 .vercel
 
+# Secrets (temporary local token storage)
+secrets/
+
+# Secrets (temporary local token storage)
+secrets/
+
 # Python (ML Pipeline)
 **/__pycache__/
 *.py[cod]

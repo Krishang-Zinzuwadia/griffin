@@ -8,6 +8,7 @@ import { ChatPage } from "@/components/chat-page";
 import { GodModeTerminal } from "@/components/god-mode-terminal";
 import { Workstation } from "@/components/workstation";
 import { MultiverseScene, type UniverseData } from "@/components/multiverse";
+import { SettingsDialog } from "@/components/settings-dialog";
 
 type ViewType = "canvas" | "chat" | "terminal" | "workstation" | "multiverse";
 
@@ -19,7 +20,7 @@ const viewComponents: Record<ViewType, React.ComponentType<any>> = {
   multiverse: () => (
     <MultiverseScene
       isOpen={true}
-      onClose={() => { }}
+      onClose={() => {}}
       onSelectUniverse={(universe, index) => {
         console.log("Selected universe:", universe, "at index:", index);
       }}
@@ -29,6 +30,7 @@ const viewComponents: Record<ViewType, React.ComponentType<any>> = {
 
 export default function Home() {
   const [activeView, setActiveView] = useState<ViewType>("canvas");
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const ActiveComponent = viewComponents[activeView];
 
@@ -41,7 +43,12 @@ export default function Home() {
 
   return (
     <div className="h-screen w-full bg-background overflow-hidden">
-      <Navbar activeView={activeView} onViewChange={handleViewChange} />
+      <Navbar
+        activeView={activeView}
+        onViewChange={handleViewChange}
+        onSettingsClick={() => setSettingsOpen(true)}
+      />
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
 
       {/* Main Workspace Area — pb keeps content above the floating dock */}
       <div className="relative h-full w-full overflow-hidden pb-[68px]">
@@ -56,7 +63,7 @@ export default function Home() {
         >
           <MultiverseScene
             isOpen={true}
-            onClose={() => { }}
+            onClose={() => {}}
             onSelectUniverse={(universe, index) => {
               console.log("Selected universe:", universe, "at index:", index);
               // Switch to canvas view after selection
@@ -85,4 +92,3 @@ export default function Home() {
     </div>
   );
 }
-
