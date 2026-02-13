@@ -130,5 +130,6 @@ sandbox
 
 # ML Office Chain
 ML/sandbox/
+ML/logs/
 ML/.venv/
 ML/venv/

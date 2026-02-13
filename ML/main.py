@@ -10,10 +10,15 @@ import sys
 import time
 from colorama import init as colorama_init, Fore, Style
 from .graph import build_graph
+from .logger import setup_logging, get_logger
 
 
 def main():
     colorama_init()  # Enable colors on Windows
+
+    # ── Initialize structured logging ────────────────────────────
+    setup_logging()
+    logger = get_logger("main")
 
     print(f"\n{Fore.WHITE}{Style.BRIGHT}")
     print("╔══════════════════════════════════════════════════════════╗")
@@ -32,6 +37,7 @@ def main():
         print(f"{Fore.RED}  ❌ No project goal provided. Exiting.{Style.RESET_ALL}")
         sys.exit(1)
 
+    logger.info(f"Pipeline starting | Goal: {project_goal}")
     print(f"\n{Fore.WHITE}  📋 Goal: {project_goal}{Style.RESET_ALL}")
     print(f"{Fore.WHITE}  ⏱️  Starting pipeline...{Style.RESET_ALL}\n")
 
@@ -39,6 +45,7 @@ def main():
 
     # ── Build & run the graph ────────────────────────────────────
     chain = build_graph()
+    logger.info("Graph compiled successfully")
 
     initial_state = {
         "project_goal": project_goal,
@@ -56,6 +63,7 @@ def main():
 
     # ── Summary ──────────────────────────────────────────────────
     elapsed = time.time() - start_time
+    logger.info(f"Pipeline complete | Elapsed: {elapsed:.2f}s")
 
     print(f"\n{Fore.GREEN}{Style.BRIGHT}")
     print("╔══════════════════════════════════════════════════════════╗")
@@ -69,15 +77,19 @@ def main():
     github_url = final_state.get("github_url", "")
     if github_url:
         print(f"  {Fore.GREEN}🔗 GitHub URL: {github_url}{Style.RESET_ALL}")
+        logger.info(f"GitHub URL: {github_url}")
     else:
         print(f"  {Fore.YELLOW}📁 Project saved locally in sandbox/{Style.RESET_ALL}")
+        logger.info("Project saved locally (no GitHub push)")
 
     # ── Execution Logs ───────────────────────────────────────────
     print(f"\n{Fore.WHITE}  📝 Execution Log:{Style.RESET_ALL}")
     for log in final_state.get("execution_logs", []):
         print(f"     {log}")
+        logger.info(f"Execution log: {log}")
 
     print()
+    logger.info("=== Pipeline session ended ===")
 
 
 if __name__ == "__main__":

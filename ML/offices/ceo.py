@@ -7,15 +7,23 @@ Takes the raw project goal and decomposes it into:
 - Descriptions for each file
 """
 
-import json
+import time
 from colorama import Fore, Style
 from ..state import OfficeState
 from ..config import get_llm
 from ..prompts import CEO_SYSTEM, CEO_HUMAN
+from ..utils import invoke_and_parse_json, validate_ceo_response
+from ..logger import get_logger
+
+logger = get_logger("ceo")
 
 
 def ceo_office(state: OfficeState) -> dict:
     """CEO node: decompose the project goal into a task manifest."""
+
+    logger.info("=== CEO OFFICE — Entering ===")
+    logger.info(f"Input state: project_goal='{state['project_goal'][:100]}'")
+    office_start = time.time()
 
     print(f"\n{Fore.YELLOW}{'='*60}")
     print(f"  🏢  CEO OFFICE — Orchestrator / Planner")
@@ -30,17 +38,16 @@ def ceo_office(state: OfficeState) -> dict:
     ]
 
     print(f"  {Fore.YELLOW}⏳ Thinking...{Style.RESET_ALL}")
-    response = llm.invoke(messages)
-    raw = response.content.strip()
 
-    # Clean potential markdown fences
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1]
-    if raw.endswith("```"):
-        raw = raw.rsplit("```", 1)[0]
-    raw = raw.strip()
+    # ── LLM call with retry + JSON parse with retry ──────────────
+    result = invoke_and_parse_json(
+        llm, messages,
+        max_retries=3,
+        office_name="CEO",
+    )
 
-    result = json.loads(raw)
+    # ── Validate & sanitize ──────────────────────────────────────
+    result = validate_ceo_response(result)
 
     project_name = result["project_name"]
     file_manifest = result["file_manifest"]
@@ -53,11 +60,17 @@ def ceo_office(state: OfficeState) -> dict:
         print(f"     📄 {f}  —  {desc}")
     print()
 
+    office_elapsed = time.time() - office_start
+    logger.info(
+        f"=== CEO OFFICE — Exiting ({office_elapsed:.2f}s) | "
+        f"project_name='{project_name}', files={len(file_manifest)} ==="
+    )
+
     return {
         "project_name": project_name,
         "file_manifest": file_manifest,
         "file_descriptions": file_descriptions,
         "execution_logs": [
-            f"[CEO] Planned project '{project_name}' with {len(file_manifest)} files."
+            f"[CEO] Planned project '{project_name}' with {len(file_manifest)} files. ({office_elapsed:.1f}s)"
         ],
     }
