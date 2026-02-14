@@ -109,7 +109,7 @@ function OfficeNode({ data }: { data: OfficeNodeData }) {
         "relative min-w-[220px] max-w-[280px] rounded-xl border-2 bg-card p-4 shadow-lg",
         data.status === "blocked" && "border-red-400/50 shadow-red-400/20",
         data.status === "working" &&
-          "border-emerald-400/50 shadow-emerald-400/20",
+        "border-emerald-400/50 shadow-emerald-400/20",
         data.status === "thinking" && "border-amber-400/50 shadow-amber-400/20",
         data.status === "idle" && "border-border",
       )}
@@ -184,7 +184,7 @@ function OfficeNode({ data }: { data: OfficeNodeData }) {
           className={cn(
             "text-xs capitalize",
             data.status === "working" &&
-              "border-emerald-400/30 text-emerald-400",
+            "border-emerald-400/30 text-emerald-400",
             data.status === "thinking" && "border-amber-400/30 text-amber-400",
             data.status === "blocked" && "border-red-400/30 text-red-400",
           )}
@@ -280,11 +280,11 @@ function buildLiveGraph(wrappers: Record<string, WrapperInfo>): {
         drones: Array.isArray((w.meta as any).drones)
           ? ((w.meta as any).drones as DroneInfo[])
           : Array.from({ length: Math.max(1, Number(w.meta.drones ?? 1)) }).map(
-              (_, dIdx) => ({
-                name: `${wrapperTypeToRole(w.type)} Agent ${dIdx + 1}`,
-                status: "idle",
-              }),
-            ),
+            (_, dIdx) => ({
+              name: `${wrapperTypeToRole(w.type)} Agent ${dIdx + 1}`,
+              status: "idle",
+            }),
+          ),
         live: true,
       },
     });
@@ -497,18 +497,7 @@ export function BlueprintCanvas() {
 
   return (
     <div className="w-full h-full bg-background relative">
-      {/* Connection indicator */}
-      <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
-        <div
-          className={cn(
-            "w-2 h-2 rounded-full",
-            connected ? "bg-emerald-400 animate-pulse" : "bg-zinc-500",
-          )}
-        />
-        <span className="text-xs text-muted-foreground">
-          {connected ? "Live" : "Offline"}
-        </span>
-      </div>
+
 
       <ReactFlow
         nodes={nodes}

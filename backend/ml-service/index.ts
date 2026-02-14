@@ -49,12 +49,12 @@ wss.on('connection', (ws: WebSocket) => {
 
 			// Execute Python ML pipeline
 			const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-			
+
 			// Project root is 2 directories up from backend/ml-service
 			const projectRoot = resolve(__dirname, '..', '..');
-			
+
 			console.log(`Running from: ${projectRoot}`);
-			
+
 			const mlProcess = spawn(pythonCmd, ['-m', 'ML.main', prompt], {
 				cwd: projectRoot,
 				env: { ...process.env },
@@ -74,10 +74,10 @@ wss.on('connection', (ws: WebSocket) => {
 				const lines = text.split('\n').filter((line) => line.trim());
 				for (const line of lines) {
 					const cleanLine = line.replace(/\x1b\[[0-9;]*m/g, ''); // Strip ANSI
-					
+
 					// Send to terminal
 					ws.send(JSON.stringify({ type: 'terminal', data: cleanLine }));
-					
+
 					// Also send important lines as progress
 					if (line.includes('OFFICE') || line.includes('✅') || line.includes('⏳')) {
 						ws.send(JSON.stringify({ type: 'progress', data: cleanLine }));
@@ -110,7 +110,7 @@ wss.on('connection', (ws: WebSocket) => {
 			mlProcess.stderr.on('data', (chunk: Buffer) => {
 				const text = chunk.toString('utf-8');
 				stderrBuffer += text;
-				
+
 				// Send stderr to terminal as well
 				const lines = text.split('\n').filter((line) => line.trim());
 				for (const line of lines) {
@@ -150,7 +150,9 @@ wss.on('connection', (ws: WebSocket) => {
 					const fileMatches = stdoutBuffer.matchAll(/\[DEVOPS\] Wrote (.+)/g);
 					const files: string[] = [];
 					for (const match of fileMatches) {
-						if (match[1]) files.push(match[1]);
+						if (match[1]) {
+							files.push(match[1]);
+						}
 					}
 
 					// Send file artifacts for workstation
@@ -167,7 +169,7 @@ wss.on('connection', (ws: WebSocket) => {
 							'json': 'json',
 							'md': 'markdown',
 						};
-						
+
 						ws.send(JSON.stringify({
 							type: 'file',
 							data: {
@@ -210,11 +212,11 @@ wss.on('connection', (ws: WebSocket) => {
 					data: `Failed to start ML pipeline: ${err.message}. Make sure Python is installed.`,
 				}));
 				console.error('Spawn error:', err);
-				
+
 				// Clean up
 				try {
 					mlProcess.kill();
-				} catch {}
+				} catch { }
 			});
 		}
 	});

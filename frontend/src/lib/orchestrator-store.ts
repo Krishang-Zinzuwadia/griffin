@@ -313,18 +313,18 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
         // Handle progress updates
         if (msg.type === 'progress') {
           let logLine = msg.data;
-          
+
           // Only show "ML Pipeline" as author for the starting message
           // Otherwise extract office name from content (e.g., "🏢 CEO OFFICE" -> "CEO OFFICE")
           let author = 'ML Pipeline';
           let avatar = 'ML';
-          
+
           if (!logLine.includes('Starting ML pipeline for:')) {
             // Try to extract office name from patterns like "🏢 CEO OFFICE — ..." or "⚡️ DEVOPS OFFICE — ..."
             // Match at start of line OR after whitespace, with optional emoji prefix
             const officeMatch = logLine.match(/^(?:[🏢⚡️✅⏳🔧🚀📁🔗📤📝❌⚠️])?\s*([A-Z][A-Z\s]*(?:OFFICE|DESIGN|API|SECURITY|CEO|PM|DEVOPS))\s*[—\-:]\s*/) ||
-                               logLine.match(/(?:^|\s)([A-Z][A-Z\s]*(?:OFFICE|DESIGN|API|SECURITY|CEO|PM|DEVOPS))\s*[—\-:]\s*/);
-            
+              logLine.match(/(?:^|\s)([A-Z][A-Z\s]*(?:OFFICE|DESIGN|API|SECURITY|CEO|PM|DEVOPS))\s*[—\-:]\s*/);
+
             if (officeMatch) {
               // Extract author from the matched pattern
               author = officeMatch[1].trim();
@@ -334,7 +334,7 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
             } else {
               // Fallback: look for bracketed names or any ALL_CAPS word
               const fallbackMatch = logLine.match(/\[([A-Z][A-Z_]+)\]/) ||
-                                   logLine.match(/\b(CEO|PM|DEVOPS|DESIGN|API|SECURITY)\b/);
+                logLine.match(/\b(CEO|PM|DEVOPS|DESIGN|API|SECURITY)\b/);
               if (fallbackMatch) {
                 author = fallbackMatch[1].trim();
                 avatar = author.slice(0, 2).toUpperCase();
@@ -345,7 +345,7 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
               }
             }
           }
-          
+
           set((state) => ({
             agentMessages: [
               ...state.agentMessages,
@@ -371,7 +371,7 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
 
         // Handle file information
         if (msg.type === 'file') {
-          const fileData = (msg.data as unknown) as { filename: string; language: string; path: string };
+          const fileData = (msg as any).data as { filename: string; language: string; path: string };
           set((state) => ({
             projectFiles: [...state.projectFiles, fileData.filename],
           }));

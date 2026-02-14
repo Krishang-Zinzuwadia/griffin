@@ -9,12 +9,11 @@ import {
   type MotionValue,
 } from "framer-motion";
 import {
-  Home,
   LayoutGrid,
   MessageSquare,
   Terminal,
   Layers,
-  Code2,
+
   DollarSign,
   Settings,
   type LucideIcon,
@@ -106,7 +105,6 @@ export function Navbar({
   const mouseX = useMotionValue(Infinity);
 
   const items: DockItem[] = [
-    { id: "home", label: "Home", icon: Home },
     {
       id: "canvas",
       label: "Blueprint Canvas",
@@ -125,12 +123,7 @@ export function Navbar({
       icon: Terminal,
       onClick: () => onViewChange("terminal"),
     },
-    {
-      id: "workstation",
-      label: "Workstation",
-      icon: Code2,
-      onClick: () => onViewChange("workstation"),
-    },
+
     {
       id: "cost",
       label: "Cost Optimizer",
@@ -161,11 +154,8 @@ export function Navbar({
         "-translate-x-1/2",
       )}
     >
-      {items.map((item, idx) => (
+      {items.map((item) => (
         <div key={item.id} className="group flex items-center">
-          {/* Separator before Canvas */}
-          {idx === 1 && <div className="mr-1 h-5 w-px bg-white/15" />}
-          {/* Separator before Settings */}
           {item.id === "settings" && (
             <div className="mr-1 h-5 w-px bg-white/15" />
           )}
@@ -178,6 +168,6 @@ export function Navbar({
           </div>
         </div>
       ))}
-    </motion.div>
+    </motion.div >
   );
 }
