@@ -1,0 +1,25 @@
+# AI Office Chain Dependencies
+
+# Agent Framework
+langgraph>=0.2.0
+langchain>=0.3.0
+langchain-google-genai>=2.0.0
+langchain-openai>=0.3.0
+
+# Environment
+python-dotenv>=1.0.0
+
+# GitHub Integration
+PyGithub>=2.0.0
+GitPython>=3.1.0
+
+# HTTP (Vercel API)
+requests>=2.31.0
+
+# Terminal Output
+colorama>=0.4.6
+
+# ML Frameworks (required to suppress warnings and for full functionality)
+torch>=2.0.0
+tensorflow>=2.0.0
+flax>=0.7.0
