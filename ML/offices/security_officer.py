@@ -58,11 +58,21 @@ def security_officer_office(state: OfficeState) -> dict:
         )),
     ]
 
-    result = invoke_and_parse_json(
-        llm,
-        messages,
-        office_name="SECURITY_OFFICER",
-    )
+    try:
+        result = invoke_and_parse_json(
+            llm,
+            messages,
+            office_name="SECURITY_OFFICER",
+        )
+    except RuntimeError as e:
+        logger.warning(f"SECURITY_OFFICER could not produce valid output: {e}")
+        print(f"  {Fore.YELLOW}⚠️  Security review skipped — LLM output could not be parsed.{Style.RESET_ALL}")
+        elapsed = time.time() - office_start
+        return {
+            "execution_logs": [
+                f"[SECURITY] Skipped: could not parse LLM response after retries. ({elapsed:.1f}s)"
+            ],
+        }
 
     patched_files = result.get("patched_files", {})
     security_notes = result.get("security_notes", [])

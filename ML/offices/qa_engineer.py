@@ -58,11 +58,22 @@ def qa_engineer_office(state: OfficeState) -> dict:
         )),
     ]
 
-    result = invoke_and_parse_json(
-        llm,
-        messages,
-        office_name="QA_ENGINEER",
-    )
+    try:
+        result = invoke_and_parse_json(
+            llm,
+            messages,
+            office_name="QA_ENGINEER",
+        )
+    except RuntimeError as e:
+        # Graceful degradation: if all retries fail, skip tests
+        logger.warning(f"QA_ENGINEER could not produce valid output: {e}")
+        print(f"  {Fore.YELLOW}⚠️  QA skipped — LLM output could not be parsed.{Style.RESET_ALL}")
+        elapsed = time.time() - office_start
+        return {
+            "execution_logs": [
+                f"[QA_ENGINEER] Skipped: could not parse LLM response after retries. ({elapsed:.1f}s)"
+            ],
+        }
 
     test_files = result.get("test_files", {})
     elapsed = time.time() - office_start
