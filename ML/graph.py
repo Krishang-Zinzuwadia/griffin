@@ -1,11 +1,13 @@
 """
 Graph — LangGraph Dynamic DAG
 
-Registers all 12 offices and wires them with conditional routing.
+Registers all offices and wires them with conditional routing.
 The CEO always runs first, selects which offices to activate, and
 the graph routes through only the active offices to DevOps.
+The Cost Optimizer always runs after the Architect to analyse token
+costs before coding offices begin.
 
-  START → CEO → [dynamically selected offices] → DevOps → END
+  START → CEO → [dynamically selected offices] → cost_optimizer → DevOps → END
 """
 
 from collections import OrderedDict
@@ -24,13 +26,16 @@ from .offices.database_engineer import database_engineer_office
 from .offices.qa_engineer import qa_engineer_office
 from .offices.security_officer import security_officer_office
 from .offices.tech_writer import tech_writer_office
+from .offices.cost_optimizer import cost_optimizer_office
 from .offices.devops import devops_office
 
 
 # ── Office Registry (ordered by canonical execution sequence) ────
+# cost_optimizer is inserted after architect to analyse costs before coding
 OFFICE_REGISTRY = OrderedDict([
     ("product_manager",    product_manager_office),
     ("architect",          architect_office),
+    ("cost_optimizer",     cost_optimizer_office),
     ("ui_designer",        ui_designer_office),
     ("api_designer",       api_designer_office),
     ("frontend_engineer",  frontend_engineer_office),
@@ -46,10 +51,21 @@ ALL_TARGETS = list(OFFICE_REGISTRY.keys()) + ["devops_office"]
 
 
 def _get_next_office(state: dict, current_id: str) -> str:
-    """Given the current office, return the next active office ID (or devops)."""
+    """Given the current office, return the next active office ID (or devops).
+
+    cost_optimizer always runs if architect is active (right after architect).
+    """
     active = state.get("active_offices", [])
+
+    # Ensure cost_optimizer is always included when architect is active
+    effective_active = list(active)
+    if "architect" in effective_active and "cost_optimizer" not in effective_active:
+        # Insert cost_optimizer right after architect
+        idx = effective_active.index("architect")
+        effective_active.insert(idx + 1, "cost_optimizer")
+
     # Filter to only offices in the registry, maintaining canonical order
-    ordered_active = [oid for oid in OFFICE_REGISTRY if oid in active]
+    ordered_active = [oid for oid in OFFICE_REGISTRY if oid in effective_active]
 
     if current_id == "ceo_office":
         return ordered_active[0] if ordered_active else "devops_office"

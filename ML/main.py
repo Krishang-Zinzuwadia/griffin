@@ -7,10 +7,12 @@ Usage:
 """
 
 import sys
+import json
 import time
 from colorama import init as colorama_init, Fore, Style
 from .graph import build_graph
 from .logger import setup_logging, get_logger
+from .utils import reset_token_usage_log, get_token_usage_summary
 
 
 def main():
@@ -47,6 +49,9 @@ def main():
 
     start_time = time.time()
 
+    # ── Reset token usage tracker for this session ────────────────
+    reset_token_usage_log()
+
     # ── Build & run the graph ────────────────────────────────────
     chain = build_graph()
     logger.info("Graph compiled successfully")
@@ -66,6 +71,7 @@ def main():
         "codebase": {},
         "execution_logs": [],
         "github_url": "",
+        "token_usage": {},
     }
 
     final_state = chain.invoke(initial_state)
@@ -96,6 +102,29 @@ def main():
     for log in final_state.get("execution_logs", []):
         print(f"     {log}")
         logger.info(f"Execution log: {log}")
+
+    # ── Token Usage & Cost Summary ───────────────────────────────
+    usage_summary = get_token_usage_summary()
+    print(f"\n{Fore.CYAN}{Style.BRIGHT}")
+    print("╔══════════════════════════════════════════════════════════╗")
+    print("║               💰  TOKEN USAGE & COST SUMMARY           ║")
+    print("╚══════════════════════════════════════════════════════════╝")
+    print(f"{Style.RESET_ALL}")
+    print(f"  {Fore.WHITE}📊 Total LLM calls:   {usage_summary['total_calls']}{Style.RESET_ALL}")
+    print(f"  {Fore.WHITE}📥 Input tokens:      {usage_summary['total_input_tokens']:,}{Style.RESET_ALL}")
+    print(f"  {Fore.WHITE}📤 Output tokens:     {usage_summary['total_output_tokens']:,}{Style.RESET_ALL}")
+    print(f"  {Fore.GREEN}💵 Total cost:        ${usage_summary['total_cost_usd']:.6f}{Style.RESET_ALL}")
+
+    if usage_summary.get("per_office"):
+        print(f"\n  {Fore.CYAN}Per-Office Breakdown:{Style.RESET_ALL}")
+        for office, stats in usage_summary["per_office"].items():
+            print(
+                f"     {office:30s}  calls={stats['calls']:2d}  "
+                f"in={stats['input_tokens']:6,}  out={stats['output_tokens']:6,}  "
+                f"cost=${stats['cost_usd']:.6f}  time={stats['total_latency_s']:.1f}s"
+            )
+
+    logger.info(f"Token usage summary: {json.dumps(usage_summary)}")
 
     print()
     logger.info("=== Pipeline session ended ===")
