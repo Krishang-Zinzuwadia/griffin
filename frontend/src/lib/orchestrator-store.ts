@@ -46,6 +46,35 @@ export interface CodeArtifact {
   componentName?: string;
 }
 
+/** A single LLM call token usage record. */
+export interface TokenUsageEntry {
+  office: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  latency_s: number;
+  timestamp: number;
+}
+
+/** Per-office aggregated stats. */
+export interface PerOfficeStat {
+  office: string;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  totalLatency: number;
+}
+
+/** Aggregated cost summary derived from tokenUsageLog. */
+export interface CostSummary {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCostUsd: number;
+  totalCalls: number;
+  perOffice: PerOfficeStat[];
+}
+
 /* ------------------------------------------------------------------ */
 /*  Envelope – mirrors backend/orchestrator/src/types.ts               */
 /* ------------------------------------------------------------------ */
@@ -75,6 +104,9 @@ interface OrchestratorState {
   projectGithubUrl: string | null;
   projectName: string | null;
   projectRepoName: string | null;
+  tokenUsageLog: TokenUsageEntry[];
+  costSummary: CostSummary;
+  costMessages: string[];
 
   connect: (orchestratorUrl: string) => void;
   disconnect: () => void;
@@ -83,6 +115,7 @@ interface OrchestratorState {
   setActiveArtifact: (id: string) => void;
   clearArtifacts: () => void;
   clearTerminal: () => void;
+  clearCostData: () => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -113,6 +146,51 @@ async function pollWrapperStatus(httpUrl: string) {
   }
 }
 
+/** Recompute the cost summary from the full token usage log. */
+function _recomputeCostSummary(log: TokenUsageEntry[]): CostSummary {
+  let totalIn = 0;
+  let totalOut = 0;
+  let totalCost = 0;
+  const perOfficeMap: Record<string, PerOfficeStat> = {};
+
+  for (const entry of log) {
+    totalIn += entry.input_tokens;
+    totalOut += entry.output_tokens;
+    totalCost += entry.cost_usd;
+
+    // Derive short office name for grouping
+    const officeKey = entry.office
+      .replace(/[(\[].*[)\]]/g, "")
+      .replace(/-retry/g, "")
+      .trim()
+      .split(" ")[0] || entry.office;
+
+    if (!perOfficeMap[officeKey]) {
+      perOfficeMap[officeKey] = {
+        office: officeKey,
+        calls: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        costUsd: 0,
+        totalLatency: 0,
+      };
+    }
+    perOfficeMap[officeKey].calls += 1;
+    perOfficeMap[officeKey].inputTokens += entry.input_tokens;
+    perOfficeMap[officeKey].outputTokens += entry.output_tokens;
+    perOfficeMap[officeKey].costUsd += entry.cost_usd;
+    perOfficeMap[officeKey].totalLatency += entry.latency_s;
+  }
+
+  return {
+    totalInputTokens: totalIn,
+    totalOutputTokens: totalOut,
+    totalCostUsd: Math.round(totalCost * 1e6) / 1e6,
+    totalCalls: log.length,
+    perOffice: Object.values(perOfficeMap).sort((a, b) => b.costUsd - a.costUsd),
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /*  Store implementation                                               */
 /* ------------------------------------------------------------------ */
@@ -129,6 +207,15 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
   projectGithubUrl: null,
   projectName: null,
   projectRepoName: null,
+  tokenUsageLog: [],
+  costSummary: {
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    totalCostUsd: 0,
+    totalCalls: 0,
+    perOffice: [],
+  },
+  costMessages: [],
 
   /* ---- simple setters ---- */
 
@@ -149,6 +236,20 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
 
   clearTerminal() {
     set({ terminalLogs: [] });
+  },
+
+  clearCostData() {
+    set({
+      tokenUsageLog: [],
+      costSummary: {
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        totalCostUsd: 0,
+        totalCalls: 0,
+        perOffice: [],
+      },
+      costMessages: [],
+    });
   },
 
   /* ---- send a raw envelope ---- */
@@ -273,6 +374,35 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
           const fileData = (msg.data as unknown) as { filename: string; language: string; path: string };
           set((state) => ({
             projectFiles: [...state.projectFiles, fileData.filename],
+          }));
+        }
+
+        // Handle per-call token usage (streamed from backend)
+        if (msg.type === 'token_usage') {
+          const entry = msg.data as unknown as TokenUsageEntry;
+          if (entry && typeof entry.input_tokens === 'number') {
+            const newEntry: TokenUsageEntry = {
+              office: entry.office ?? 'unknown',
+              input_tokens: entry.input_tokens,
+              output_tokens: entry.output_tokens,
+              cost_usd: entry.cost_usd,
+              latency_s: entry.latency_s,
+              timestamp: Date.now(),
+            };
+            set((state) => {
+              const newLog = [...state.tokenUsageLog, newEntry];
+              return {
+                tokenUsageLog: newLog,
+                costSummary: _recomputeCostSummary(newLog),
+              };
+            });
+          }
+        }
+
+        // Handle cost optimizer text updates
+        if (msg.type === 'cost_update') {
+          set((state) => ({
+            costMessages: [...state.costMessages, msg.data],
           }));
         }
 

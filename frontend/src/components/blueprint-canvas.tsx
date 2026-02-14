@@ -14,7 +14,7 @@ import {
   Position,
 } from "@xyflow/react";
 import { motion } from "framer-motion";
-import { Brain, Bot, Code, Database, Shield, Globe } from "lucide-react";
+import { Brain, Bot, Code, Database, Shield, Globe, DollarSign } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
@@ -56,6 +56,7 @@ const roleIcons = {
   Deployment: Globe,
   Security: Shield,
   DevOps: Globe,
+  "Cost Optimizer": DollarSign,
   default: Bot,
 } as const;
 
@@ -67,6 +68,7 @@ const roleColors = {
   Deployment: "from-orange-500 to-orange-700",
   Security: "from-red-500 to-red-700",
   DevOps: "from-orange-500 to-orange-700",
+  "Cost Optimizer": "from-amber-500 to-amber-700",
   default: "from-gray-400 to-gray-600",
 } as const;
 
@@ -79,6 +81,7 @@ function wrapperTypeToRole(type: string): string {
     health: "DevOps",
     "backend-api": "Backend Dev",
     security: "Security",
+    "cost-optimizer": "Cost Optimizer",
   };
   return map[type] ?? type;
 }
@@ -385,6 +388,21 @@ const DEMO_NODES: Node<OfficeNodeData>[] = [
       ],
     },
   },
+  {
+    id: "6",
+    type: "office",
+    position: { x: 750, y: 250 },
+    data: {
+      label: "Cost Optimizer",
+      status: "idle",
+      type: "worker",
+      role: "Cost Optimizer",
+      drones: [
+        { name: "Token Tracker", status: "idle" },
+        { name: "Path Optimizer", status: "idle" },
+      ],
+    },
+  },
 ];
 
 const DEMO_EDGES: Edge[] = [
@@ -422,6 +440,20 @@ const DEMO_EDGES: Edge[] = [
     target: "5",
     animated: true,
     style: { stroke: "#fbbf24" },
+  },
+  {
+    id: "e2-6",
+    source: "2",
+    target: "6",
+    animated: true,
+    style: { stroke: "#f59e0b" },
+  },
+  {
+    id: "e6-5",
+    source: "6",
+    target: "5",
+    animated: true,
+    style: { stroke: "#f59e0b" },
   },
 ];
 

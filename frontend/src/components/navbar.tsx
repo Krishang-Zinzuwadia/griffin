@@ -15,6 +15,7 @@ import {
   Terminal,
   Layers,
   Code2,
+  DollarSign,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -129,6 +130,12 @@ export function Navbar({
       label: "Workstation",
       icon: Code2,
       onClick: () => onViewChange("workstation"),
+    },
+    {
+      id: "cost",
+      label: "Cost Optimizer",
+      icon: DollarSign,
+      onClick: () => onViewChange("cost"),
     },
     {
       id: "multiverse",
