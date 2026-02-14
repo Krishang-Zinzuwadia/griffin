@@ -1,0 +1,15 @@
+[build]
+builder = "NIXPACKS"
+buildCommand = "npm install && cd backend/ml-service && bun install"
+
+[deploy]
+startCommand = "cd backend/ml-service && bun run start"
+restartPolicyType = "ON_FAILURE"
+numReplicas = 1
+
+[[services]]
+name = "ml-service"
+healthcheckPath = "/"
+healthcheckTimeout = 100
+startCommand = "cd backend/ml-service && bun run start"
+env = { PORT = "9100" }
