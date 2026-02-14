@@ -52,5 +52,8 @@ class OfficeState(TypedDict):
     github_url: str  # Final repo URL
     vercel_url: str  # Vercel deployment URL
 
+    # ── Set by Cost Optimizer & updated by all offices ───────────
+    token_usage: Annotated[dict, merge_dicts]  # Token counts, costs, per-office breakdown
+
     # ── Shared across all offices ────────────────────────────────
     execution_logs: Annotated[list[str], operator.add]  # Append-only audit trail

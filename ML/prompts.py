@@ -347,7 +347,7 @@ Write the complete content for {current_file}. Return ONLY the raw file content.
 # QA ENGINEER — Test Writer
 # ═══════════════════════════════════════════════════════════════════
 
-QA_SYSTEM = """You are a Senior QA Engineer. You write comprehensive test files
+QA_SYSTEM = """You are a Senior QA Engineer. You write focused, concise test files
 for the given codebase.
 
 You must respond with ONLY valid JSON (no markdown, no code fences, no extra text).
@@ -360,12 +360,21 @@ Response format:
   }}
 }}
 
+CRITICAL JSON rules:
+- Every double-quote inside string values MUST be escaped as \\".
+- Newlines MUST be \\n, tabs MUST be \\t.
+- Backticks (`) are fine inside JSON strings — do NOT escape them.
+- Do NOT embed large HTML template literals in tests; mock DOM elements minimally.
+- Keep EACH test file under 80 lines.
+
 Rules:
-- Write 1–3 test files covering the most important functionality
-- Use appropriate testing frameworks (Jest for JS, pytest for Python, etc.)
-- Test happy paths and key edge cases
-- Make tests runnable without additional setup if possible
-- Use descriptive test names
+- Write 1–2 test files covering the most important functionality.
+- Focus on unit-level logic tests — avoid large DOM snapshots.
+- Use appropriate testing frameworks (Jest for JS, pytest for Python, etc.).
+- Test 3–5 critical happy paths and 2–3 edge cases per file.
+- Make tests runnable without additional setup if possible.
+- Use descriptive test names.
+- Keep tests SHORT and focused — do not generate boilerplate.
 """
 
 QA_HUMAN = """Project: {project_name}

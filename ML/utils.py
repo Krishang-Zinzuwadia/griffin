@@ -20,6 +20,102 @@ logger = logging.getLogger("office_chain")
 # JSON PARSING RESILIENCE
 # ═══════════════════════════════════════════════════════════════════
 
+def _repair_truncated_json(text: str) -> dict | None:
+    """Attempt to repair a truncated JSON string.
+
+    Common case: the LLM hit its output-token limit mid-JSON,
+    leaving an unclosed string value inside an object.  We try to
+    close the open string, close any open braces/brackets, and
+    parse the result.
+    """
+    s = text.rstrip()
+
+    # If it already ends with }, try parsing first
+    if s.endswith("}"):
+        try:
+            return json.loads(s)
+        except json.JSONDecodeError:
+            pass
+
+    # Check whether we're inside an unclosed string
+    in_string = False
+    escape = False
+    stack: list[str] = []  # track { and [
+    for ch in s:
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"' and not in_string:
+            in_string = True
+            continue
+        if ch == '"' and in_string:
+            in_string = False
+            continue
+        if not in_string:
+            if ch in "{[":
+                stack.append(ch)
+            elif ch == "}" and stack and stack[-1] == "{":
+                stack.pop()
+            elif ch == "]" and stack and stack[-1] == "[":
+                stack.pop()
+
+    # Close the open string if needed
+    if in_string:
+        # Trim any trailing broken escape sequence
+        if s.endswith("\\"):
+            s = s[:-1]
+        s += '"'
+
+    # Close remaining open containers
+    for bracket in reversed(stack):
+        s += "]" if bracket == "[" else "}"
+
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        pass
+
+    # More aggressive: chop back to the last complete key-value pair
+    # Find last complete entry (string: string) by looking for last '",' or '"\n'
+    last_clean = s.rfind('","')
+    if last_clean == -1:
+        last_clean = s.rfind('",')
+    if last_clean > 0:
+        attempt = s[: last_clean + 1]  # keep the closing quote
+        # Close containers
+        in_str = False
+        esc = False
+        stk: list[str] = []
+        for ch in attempt:
+            if esc:
+                esc = False
+                continue
+            if ch == "\\":
+                esc = True
+                continue
+            if ch == '"':
+                in_str = not in_str
+                continue
+            if not in_str:
+                if ch in "{[":
+                    stk.append(ch)
+                elif ch == "}" and stk and stk[-1] == "{":
+                    stk.pop()
+                elif ch == "]" and stk and stk[-1] == "[":
+                    stk.pop()
+        for bracket in reversed(stk):
+            attempt += "]" if bracket == "[" else "}"
+        try:
+            return json.loads(attempt)
+        except json.JSONDecodeError:
+            pass
+
+    return None
+
+
 def parse_json_response(raw: str) -> dict:
     """Extract and parse JSON from an LLM response.
 
@@ -27,6 +123,7 @@ def parse_json_response(raw: str) -> dict:
     - Clean JSON
     - JSON wrapped in ```json ... ``` fences
     - JSON buried in surrounding text/explanation
+    - **Truncated JSON** (LLM hit output-token limit mid-string)
     """
     text = raw.strip()
 
@@ -52,6 +149,29 @@ def parse_json_response(raw: str) -> dict:
             return json.loads(fence_match.group(1).strip())
         except json.JSONDecodeError:
             pass
+
+    # ── Attempt 4: Repair truncated JSON ─────────────────────────
+    # Find the first '{' and try to repair everything from there
+    brace_idx = text.find("{")
+    if brace_idx >= 0:
+        repaired = _repair_truncated_json(text[brace_idx:])
+        if repaired is not None:
+            logger.warning(
+                "JSON was truncated — recovered via repair. "
+                "Some data may be incomplete."
+            )
+            return repaired
+
+    # Also try repairing after stripping fences
+    brace_idx = cleaned.find("{")
+    if brace_idx >= 0:
+        repaired = _repair_truncated_json(cleaned[brace_idx:])
+        if repaired is not None:
+            logger.warning(
+                "JSON was truncated (inside fences) — recovered via repair. "
+                "Some data may be incomplete."
+            )
+            return repaired
 
     # ── All parsing attempts failed ──────────────────────────────
     logger.error(f"Failed to parse JSON from LLM response:\n{text[:500]}")
@@ -91,6 +211,134 @@ def strip_code_fences(text: str) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════
+# GLOBAL TOKEN USAGE TRACKER
+# ═══════════════════════════════════════════════════════════════════
+
+_token_usage_log: list[dict] = []
+
+
+def get_token_usage_log() -> list[dict]:
+    """Return the full token usage log for the current session."""
+    return list(_token_usage_log)
+
+
+def get_token_usage_summary() -> dict:
+    """Return aggregated token usage across all LLM calls this session."""
+    total_input = sum(e.get("input_tokens", 0) for e in _token_usage_log)
+    total_output = sum(e.get("output_tokens", 0) for e in _token_usage_log)
+    total_cost = sum(e.get("cost_usd", 0.0) for e in _token_usage_log)
+    total_calls = len(_token_usage_log)
+
+    # Per-office aggregation
+    per_office: dict[str, dict] = {}
+    for entry in _token_usage_log:
+        office = entry.get("office", "unknown")
+        if office not in per_office:
+            per_office[office] = {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cost_usd": 0.0,
+                "calls": 0,
+                "total_latency_s": 0.0,
+            }
+        per_office[office]["input_tokens"] += entry.get("input_tokens", 0)
+        per_office[office]["output_tokens"] += entry.get("output_tokens", 0)
+        per_office[office]["cost_usd"] += entry.get("cost_usd", 0.0)
+        per_office[office]["calls"] += 1
+        per_office[office]["total_latency_s"] += entry.get("latency_s", 0.0)
+
+    return {
+        "total_input_tokens": total_input,
+        "total_output_tokens": total_output,
+        "total_cost_usd": round(total_cost, 6),
+        "total_calls": total_calls,
+        "per_office": per_office,
+    }
+
+
+def reset_token_usage_log() -> None:
+    """Clear the token usage log (call at pipeline start)."""
+    _token_usage_log.clear()
+
+
+def _estimate_tokens(text: str) -> int:
+    """Rough token count: ~4 characters per token for English text."""
+    return max(1, len(text) // 4)
+
+
+def _calculate_call_cost(input_tokens: int, output_tokens: int) -> float:
+    """Calculate USD cost for a single call using active model pricing."""
+    try:
+        from .offices.cost_optimizer import calculate_cost
+        return calculate_cost(input_tokens, output_tokens)
+    except Exception:
+        # Fallback: rough estimate at $0.10/1M input, $0.40/1M output
+        return round(
+            (input_tokens / 1_000_000) * 0.10 + (output_tokens / 1_000_000) * 0.40,
+            6,
+        )
+
+
+def _record_token_usage(
+    office_name: str,
+    response,
+    messages: list,
+    latency: float,
+) -> dict:
+    """Extract token usage from an LLM response and record it.
+
+    Tries to read usage_metadata from the response (LangChain standard).
+    Falls back to character-based estimation.
+    """
+    input_tokens = 0
+    output_tokens = 0
+
+    # Try LangChain's usage_metadata (works with Gemini & OpenAI)
+    usage = getattr(response, "usage_metadata", None)
+    if usage and isinstance(usage, dict):
+        input_tokens = usage.get("input_tokens", 0) or usage.get("prompt_tokens", 0)
+        output_tokens = usage.get("output_tokens", 0) or usage.get("completion_tokens", 0)
+
+    # Try response_metadata.token_usage (ChatOpenAI style)
+    if not input_tokens and not output_tokens:
+        resp_meta = getattr(response, "response_metadata", {})
+        if isinstance(resp_meta, dict):
+            token_usage = resp_meta.get("token_usage", {})
+            if token_usage:
+                input_tokens = token_usage.get("prompt_tokens", 0)
+                output_tokens = token_usage.get("completion_tokens", 0)
+
+    # Fallback: estimate from text
+    if not input_tokens:
+        prompt_text = " ".join(
+            m[1] if isinstance(m, tuple) else str(m) for m in messages
+        )
+        input_tokens = _estimate_tokens(prompt_text)
+    if not output_tokens:
+        output_tokens = _estimate_tokens(response.content if hasattr(response, "content") else "")
+
+    cost = _calculate_call_cost(input_tokens, output_tokens)
+
+    entry = {
+        "office": office_name,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cost_usd": cost,
+        "latency_s": round(latency, 2),
+        "timestamp": time.time(),
+    }
+    _token_usage_log.append(entry)
+
+    logger.info(
+        f"[{office_name}] Token usage: "
+        f"in={input_tokens}, out={output_tokens}, "
+        f"cost=${cost:.6f}, latency={latency:.2f}s"
+    )
+
+    return entry
+
+
+# ═══════════════════════════════════════════════════════════════════
 # LLM INVOCATION WITH RETRY + EXPONENTIAL BACKOFF
 # ═══════════════════════════════════════════════════════════════════
 
@@ -106,6 +354,8 @@ def invoke_llm_with_retry(
     Catches rate-limit (429) and transient errors, retries with
     increasing delays: 2s → 4s → 8s.
 
+    Also records token usage per call via the global tracker.
+
     Returns the raw response content string.
     """
     last_error = None
@@ -116,6 +366,9 @@ def invoke_llm_with_retry(
             response = llm.invoke(messages)
             call_latency = time.time() - call_start
             content = response.content.strip()
+
+            # Record token usage
+            _record_token_usage(office_name, response, messages, call_latency)
 
             # Log timing and response size
             logger.info(
