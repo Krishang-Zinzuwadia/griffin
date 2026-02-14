@@ -82,6 +82,28 @@ wss.on('connection', (ws: WebSocket) => {
 					if (line.includes('OFFICE') || line.includes('✅') || line.includes('⏳')) {
 						ws.send(JSON.stringify({ type: 'progress', data: cleanLine }));
 					}
+
+					// Forward cost/token data from Cost Optimizer office
+					if (line.includes('COST OPTIMIZER') || line.includes('Token usage:') || line.includes('💰') || line.includes('💵')) {
+						ws.send(JSON.stringify({ type: 'cost_update', data: cleanLine }));
+					}
+
+					// Detect per-call token usage lines from the tracker
+					if (line.includes('Token usage:') && line.includes('cost=$')) {
+						const tokenMatch = cleanLine.match(/\[([^\]]+)\] Token usage: in=(\d+), out=(\d+), cost=\$([0-9.]+), latency=([0-9.]+)s/);
+						if (tokenMatch) {
+							ws.send(JSON.stringify({
+								type: 'token_usage',
+								data: {
+									office: tokenMatch[1] ?? 'unknown',
+									input_tokens: parseInt(tokenMatch[2] ?? '0', 10),
+									output_tokens: parseInt(tokenMatch[3] ?? '0', 10),
+									cost_usd: parseFloat(tokenMatch[4] ?? '0'),
+									latency_s: parseFloat(tokenMatch[5] ?? '0'),
+								},
+							}));
+						}
+					}
 				}
 			});
 

@@ -7,16 +7,18 @@ import { BlueprintCanvas } from "@/components/blueprint-canvas";
 import { ChatPage } from "@/components/chat-page";
 import { GodModeTerminal } from "@/components/god-mode-terminal";
 import { Workstation } from "@/components/workstation";
+import { CostDashboard } from "@/components/cost-dashboard";
 import { MultiverseScene, type UniverseData } from "@/components/multiverse";
 import { SettingsDialog } from "@/components/settings-dialog";
 
-type ViewType = "canvas" | "chat" | "terminal" | "workstation" | "multiverse";
+type ViewType = "canvas" | "chat" | "terminal" | "workstation" | "cost" | "multiverse";
 
 const viewComponents: Record<ViewType, React.ComponentType<any>> = {
   canvas: BlueprintCanvas,
   chat: ChatPage,
   terminal: GodModeTerminal,
   workstation: Workstation,
+  cost: CostDashboard,
   multiverse: () => (
     <MultiverseScene
       isOpen={true}
