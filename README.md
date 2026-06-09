@@ -1,6 +1,6 @@
 # Griffin 
 
-**AI-Powered Software Studio** — Generate complete, production-ready projects from a single prompt.
+**AI-Powered Software Studio** , Generate complete, production-ready projects from a single prompt.
 
 Griffin is an intelligent multi-agent system that transforms natural language descriptions into fully functional applications, complete with code, tests, documentation, GitHub repositories, and live Vercel deployments.
 
@@ -10,10 +10,10 @@ Griffin is an intelligent multi-agent system that transforms natural language de
 
 Simply describe what you want to build, and Griffin's AI Office Chain handles the entire development lifecycle:
 
-1. **CEO Office** — Analyzes requirements and plans the project structure
-2. **Product Office** — Designs architecture and selects optimal tech stack  
-3. **Engineering Office** — Writes all code files with best practices
-4. **DevOps Office** — Creates GitHub repo, pushes code, and deploys to Vercel
+1. **CEO Office** , Analyzes requirements and plans the project structure
+2. **Product Office** , Designs architecture and selects optimal tech stack  
+3. **Engineering Office** , Writes all code files with best practices
+4. **DevOps Office** , Creates GitHub repo, pushes code, and deploys to Vercel
 
 **Example:**
 ```
@@ -25,14 +25,14 @@ Griffin: [Generates HTML, CSS, JS, tests, README] → Pushes to GitHub → Deplo
 
 ## Features
 
-- **🤖 Multi-Agent AI Pipeline** — 4 specialized AI agents working in sequence
-- **⚡ Real-time Streaming** — Watch progress live as code is generated
-- **📁 Complete Project Generation** — Source code, tests, documentation
-- **🔗 Auto GitHub Integration** — Repositories created and code pushed automatically
-- **🌐 Auto Vercel Deployment** — Live URLs generated for every project
-- **💬 Interactive Chat Interface** — Natural conversation with the AI studio
-- **🖥️ Terminal View** — Full visibility into the generation process
-- **🎨 Modern UI** — Built with Next.js 16, React 19, and Tailwind CSS
+- **🤖 Multi-Agent AI Pipeline** , 4 specialized AI agents working in sequence
+- **⚡ Real-time Streaming** , Watch progress live as code is generated
+- **📁 Complete Project Generation** , Source code, tests, documentation
+- **🔗 Auto GitHub Integration** , Repositories created and code pushed automatically
+- **🌐 Auto Vercel Deployment** , Live URLs generated for every project
+- **💬 Interactive Chat Interface** , Natural conversation with the AI studio
+- **🖥️ Terminal View** , Full visibility into the generation process
+- **🎨 Modern UI** , Built with Next.js 16, React 19, and Tailwind CSS
 
 ---
 
@@ -151,12 +151,12 @@ NEXT_PUBLIC_ML_SERVICE_URL=ws://localhost:9100
 
 ### 3. Run the Application
 
-**Terminal 1 — Start ML Service:**
+**Terminal 1 , Start ML Service:**
 ```bash
 bun run dev:ml
 ```
 
-**Terminal 2 — Start Frontend:**
+**Terminal 2 , Start Frontend:**
 ```bash
 bun run dev:frontend
 ```
