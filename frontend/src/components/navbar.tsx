@@ -11,9 +11,10 @@ import {
 import {
   LayoutGrid,
   MessageSquare,
+  Hash,
+  Code2,
   Terminal,
   Layers,
-
   DollarSign,
   Settings,
   type LucideIcon,
@@ -113,9 +114,21 @@ export function Navbar({
     },
     {
       id: "chat",
-      label: "Communication Hub",
+      label: "Chat",
       icon: MessageSquare,
       onClick: () => onViewChange("chat"),
+    },
+    {
+      id: "channels",
+      label: "Communication Hub",
+      icon: Hash,
+      onClick: () => onViewChange("channels"),
+    },
+    {
+      id: "workstation",
+      label: "Workstation",
+      icon: Code2,
+      onClick: () => onViewChange("workstation"),
     },
     {
       id: "terminal",
