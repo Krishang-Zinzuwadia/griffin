@@ -22,6 +22,7 @@ from git import Repo as GitRepo
 
 from ..state import OfficeState
 from ..config import GITHUB_TOKEN, GITHUB_OWNER, SANDBOX_DIR, VERCEL_TOKEN, OFFLINE
+from ..constitution import mask_secrets
 from ..logger import get_logger
 
 logger = get_logger("devops")
@@ -173,7 +174,8 @@ def _generate_report(state: OfficeState, total_elapsed: float, vercel_url: str =
         "",
     ]
 
-    return "\n".join(lines)
+    # Redact any credential-like values so tokens never leak into the report.
+    return mask_secrets("\n".join(lines))
 
 
 # ═══════════════════════════════════════════════════════════════════

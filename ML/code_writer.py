@@ -174,6 +174,32 @@ def write_files(
         if idx < total:
             time.sleep(1)
 
+    # ── Constitution compliance check ────────────────────────────
+    # Enforce the Agent Constitution (REQUIREMENTS.md section 8) over the
+    # accumulated codebase (existing files plus what this office just wrote)
+    # and hand DevOps a CONSTITUTION.md report to write and push. This is a
+    # best-effort audit: it must never break the coding pipeline.
+    try:
+        from .constitution import check_codebase, build_report
+
+        full_codebase = {**existing_codebase, **codebase}
+        full_codebase.pop("CONSTITUTION.md", None)  # never audit the report itself
+        violations = check_codebase(full_codebase)
+        codebase["CONSTITUTION.md"] = build_report(violations)
+
+        high = sum(1 for v in violations if v.get("severity") == "high")
+        medium = sum(1 for v in violations if v.get("severity") == "medium")
+        low = sum(1 for v in violations if v.get("severity") == "low")
+        con_msg = (
+            f"[CONSTITUTION] {len(violations)} violations found "
+            f"({high} high, {medium} medium, {low} low)"
+        )
+        logs.append(con_msg)
+        logger.info(con_msg)
+        print(f"  {Fore.CYAN}{con_msg}{Style.RESET_ALL}")
+    except Exception as e:
+        logger.warning(f"Constitution check skipped: {e}")
+
     office_elapsed = time.time() - office_start
     print(f"\n  {Fore.GREEN}✅ All {total} files written in {office_elapsed:.1f}s!{Style.RESET_ALL}\n")
     logger.info(
