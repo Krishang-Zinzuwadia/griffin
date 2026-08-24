@@ -18,8 +18,3 @@ requests>=2.31.0
 
 # Terminal Output
 colorama>=0.4.6
-
-# ML Frameworks (required to suppress warnings and for full functionality)
-torch>=2.0.0
-tensorflow>=2.0.0
-flax>=0.7.0

@@ -25,7 +25,7 @@ Griffin: [Generates HTML, CSS, JS, tests, README] → Pushes to GitHub → Deplo
 
 ## Features
 
-- **🤖 Multi-Agent AI Pipeline** , 4 specialized AI agents working in sequence
+- **🤖 Multi-Agent AI Pipeline** , a dynamic chain of specialized AI offices, selected per prompt by the CEO office and run in sequence
 - **⚡ Real-time Streaming** , Watch progress live as code is generated
 - **📁 Complete Project Generation** , Source code, tests, documentation
 - **🔗 Auto GitHub Integration** , Repositories created and code pushed automatically
@@ -112,8 +112,10 @@ Griffin: [Generates HTML, CSS, JS, tests, README] → Pushes to GitHub → Deplo
 git clone <repository-url>
 cd griffin
 
-# Install JavaScript dependencies
+# Install JavaScript dependencies for each package
 bun install
+cd frontend && bun install && cd ..
+cd backend/ml-service && bun install && cd ../..
 
 # Install Python dependencies
 cd ML
@@ -221,8 +223,8 @@ bun run dev:frontend   # Start Next.js dev server (port 3000)
 bun run dev:tauri      # Start Tauri desktop app
 
 # Production
-bun run build          # Build frontend for production
-bun run start          # Start production server
+cd frontend && bun run build   # Build frontend for production
+cd frontend && bun run start   # Start production server
 ```
 
 ### Running Tests
