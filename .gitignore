@@ -102,9 +102,6 @@ frontend/next-env.d.ts
 # Secrets (temporary local token storage)
 secrets/
 
-# Secrets (temporary local token storage)
-secrets/
-
 # Python (ML Pipeline)
 **/__pycache__/
 *.py[cod]
@@ -138,6 +135,9 @@ bun.lock
 
 # ML Office Chain - Generated Projects
 ML/sandbox/
+# Root sandbox is also a generated output location, never commit it.
+/sandbox/
+sandbox/
 ML/logs/
 ML/.venv/
 ML/venv/
