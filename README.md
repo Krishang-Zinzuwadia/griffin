@@ -238,7 +238,7 @@ The pipeline ships with an offline mock provider, so the full office chain runs 
 no API key and no network. From the repo root:
 
 ```bash
-pip install -r ML/requirements.txt
+pip install -r ML/requirements-dev.txt
 python -m pytest
 ```
 

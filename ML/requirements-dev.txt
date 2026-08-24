@@ -1,0 +1,4 @@
+# Development and test dependencies.
+# Installs the runtime requirements plus the test runner.
+-r requirements.txt
+pytest>=8.0.0
