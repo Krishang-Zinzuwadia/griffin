@@ -75,6 +75,19 @@ wss.on('connection', (ws: WebSocket) => {
 				for (const line of lines) {
 					const cleanLine = line.replace(/\x1b\[[0-9;]*m/g, ''); // Strip ANSI
 
+					// Structured live events from the pipeline (office status, etc.)
+					if (cleanLine.startsWith('@@GRIFFIN_EVENT ')) {
+						try {
+							const evt = JSON.parse(cleanLine.slice('@@GRIFFIN_EVENT '.length));
+							if (evt && evt.kind === 'office_status') {
+								ws.send(JSON.stringify({ type: 'office_status', data: evt }));
+							}
+						} catch {
+							// Ignore malformed event lines
+						}
+						continue; // Do not echo the raw marker to the terminal
+					}
+
 					// Send to terminal
 					ws.send(JSON.stringify({ type: 'terminal', data: cleanLine }));
 

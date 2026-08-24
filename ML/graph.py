@@ -10,6 +10,7 @@ costs before coding offices begin.
   START → CEO → [dynamically selected offices] → cost_optimizer → DevOps → END
 """
 
+import json
 from collections import OrderedDict
 from langgraph.graph import StateGraph, START, END
 from .state import OfficeState
@@ -50,6 +51,58 @@ OFFICE_REGISTRY = OrderedDict([
 ALL_TARGETS = list(OFFICE_REGISTRY.keys()) + ["devops_office"]
 
 
+# ── Live status events ───────────────────────────────────────────
+# Each node emits a machine readable status line on stdout so the ML service can
+# forward it to the frontend and drive the Blueprint Canvas node states.
+NODE_NAMES = {
+    "ceo_office": "CEO Office",
+    "product_manager": "Product Manager",
+    "architect": "Architect",
+    "cost_optimizer": "Cost Optimizer",
+    "ui_designer": "UI Designer",
+    "api_designer": "API Designer",
+    "frontend_engineer": "Frontend Engineer",
+    "backend_engineer": "Backend Engineer",
+    "database_engineer": "Database Engineer",
+    "qa_engineer": "QA Engineer",
+    "security_officer": "Security Officer",
+    "tech_writer": "Tech Writer",
+    "devops_office": "DevOps",
+}
+
+EVENT_PREFIX = "@@GRIFFIN_EVENT "
+
+
+def _emit_status(office_id: str, status: str) -> None:
+    """Print a status event that the ML service parses and forwards."""
+    payload = {
+        "kind": "office_status",
+        "office": office_id,
+        "name": NODE_NAMES.get(office_id, office_id),
+        "status": status,
+    }
+    try:
+        print(EVENT_PREFIX + json.dumps(payload), flush=True)
+    except Exception:
+        pass
+
+
+def _instrument(office_id: str, fn):
+    """Wrap an office node so it emits WORKING, then IDLE (or BLOCKED on error)."""
+
+    def wrapped(state):
+        _emit_status(office_id, "WORKING")
+        try:
+            result = fn(state)
+        except Exception:
+            _emit_status(office_id, "BLOCKED")
+            raise
+        _emit_status(office_id, "IDLE")
+        return result
+
+    return wrapped
+
+
 def _get_next_office(state: dict, current_id: str) -> str:
     """Given the current office, return the next active office ID (or devops).
 
@@ -88,11 +141,11 @@ def build_graph():
 
     graph = StateGraph(OfficeState)
 
-    # ── Add ALL nodes ────────────────────────────────────────────
-    graph.add_node("ceo_office", ceo_office)
+    # ── Add ALL nodes (wrapped to emit live status events) ───────
+    graph.add_node("ceo_office", _instrument("ceo_office", ceo_office))
     for office_id, office_fn in OFFICE_REGISTRY.items():
-        graph.add_node(office_id, office_fn)
-    graph.add_node("devops_office", devops_office)
+        graph.add_node(office_id, _instrument(office_id, office_fn))
+    graph.add_node("devops_office", _instrument("devops_office", devops_office))
 
     # ── CEO always runs first ────────────────────────────────────
     graph.add_edge(START, "ceo_office")
