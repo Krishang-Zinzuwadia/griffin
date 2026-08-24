@@ -5,6 +5,12 @@
 
 > **TL;DR:** One Prompt → One Company → One Deployed Product.
 
+> **Status:** This document is the target specification and vision, not a
+> description of the current build. Many items below are aspirational. For an
+> honest, up to date split of what is implemented versus planned, see the
+> "Implemented vs Roadmap" section in [README.md](README.md). Sections that
+> describe something not yet built are marked **Planned**.
+
 ---
 
 ## 1. Technical Stack (Non-Negotiable)
@@ -15,10 +21,10 @@
 | **Desktop**     | **Tauri 2.0**                                      | Static export from Next.js.               |
 | **Frontend**    | **Next.js 16.1** (App Router)                      | Zustand for state. React Flow for graph.  |
 | **Styling**     | **Tailwind CSS**                                   | Utility classes only. No CSS modules.     |
-| **Backend**     | **Python FastAPI**                                 | Async WebSockets for real-time streaming. |
-| **Agent Logic** | **LangGraph**                                      | State machines for Office orchestration.  |
-| **Database**    | **PostgreSQL**                                     | Supabase or local Docker.                 |
-| **Visuals**     | React Flow, Framer Motion, Monaco Editor, xterm.js |                                           |
+| **Backend**     | **Python FastAPI**                                 | Planned. Today a Bun WebSocket service spawns the Python CLI. |
+| **Agent Logic** | **LangGraph**                                      | Implemented. Drives the office chain.     |
+| **Database**    | **PostgreSQL**                                     | Planned. No persistence is implemented yet. |
+| **Visuals**     | React Flow, Framer Motion, Monaco Editor, xterm.js | React Flow and Framer Motion are in use. Monaco and xterm are planned. |
 
 ---
 
@@ -63,12 +69,18 @@ Office
 
 ### 3.3 Workstation (Output Visualization)
 
+**Planned.** The current Workstation is a tabbed artifact viewer. It does not embed
+Monaco or xterm and does not stream code character by character.
+
 | Req ID    | Description                                                                                  |
 | --------- | -------------------------------------------------------------------------------------------- |
 | `WORK-01` | Ghost Typing: Monaco Editor streams code character-by-character.                             |
 | `WORK-02` | Artifact Renderer: Code → Editor, UI → Wireframe, DB → ER Diagram, 3D → `react-three-fiber`. |
 
 ### 3.4 God Mode Terminal
+
+**Planned.** The terminal currently returns canned responses for these commands; it
+does not execute them.
 
 | Command           | Effect                          |
 | ----------------- | ------------------------------- |
@@ -77,6 +89,9 @@ Office
 | `/hire [Role]`    | Spin up temporary custom agent. |
 
 ### 3.5 Multiverse View
+
+**Planned.** A visual Multiverse scene exists in the UI, but it does not yet manage
+real isolated universe instances.
 
 This high-concept UI transition, referred to as **"Stacked 3D Perspective"** or **"Deck Overview"** mode, provides a "God-eye view" of the application. Instead of standard tab-switching, the user physically "steps back" from the current screen to see other active instances layered in a 3D space.
 
@@ -114,13 +129,21 @@ Focus on GPU-accelerated properties to maintain snappiness.
 | **Depth**     | `z-index` + `translateZ`.            | Layering without recalculation.  |
 | **GPU**       | `will-change: transform`.            | Forces GPU acceleration.         |
 
-**Tips:** Use `backface-visibility: hidden;` and `-webkit-font-smoothing: subpixel-antialiased;` to prevent aliasing on tilted blueprints. Target 300ms–450ms animations with "out-back" or "expo" easing.
+**Tips:** Use `backface-visibility: hidden;` and `-webkit-font-smoothing: subpixel-antialiased;` to prevent aliasing on tilted blueprints. Target 300ms to 450ms animations with "out-back" or "expo" easing.
 
 ---
 
 ## 4. The Organization (26 Offices)
 
-Inactive offices remain as "Dark Nodes" until activated by prompt context.
+This 26-office catalog is the target. About a dozen offices are implemented today:
+Executive Management (the CEO office), Product Management, Systems Architecture, UI
+Design, Web Frontend, Backend Engineering, Database Systems, QA & Testing,
+Cybersecurity, Technical Documentation, and DevOps & Deployment, plus a Cost
+Optimizer and an API design office that are specific to the current build. The
+remaining offices in the table below are **planned** and are not yet built.
+
+Of the CEO-selected active offices, only the implemented ones actually run; the
+rest are shown as inactive nodes.
 
 | #                         | Office                  | Head Role           | Key Workers                                         | Primary Output                                               |
 | ------------------------- | ----------------------- | ------------------- | --------------------------------------------------- | ------------------------------------------------------------ |
@@ -151,7 +174,7 @@ Inactive offices remain as "Dark Nodes" until activated by prompt context.
 | 20                        | 3D & Spatial            | 3D Lead             | Three.js Dev, Shader Wizard                         | WebGL scenes                                                 |
 | 21                        | Game Development        | Game Lead           | Gameplay Programmer, Physics Tuner                  | Game loop logic                                              |
 | **Quality & Growth**      |                         |                     |                                                     |
-| 22                        | QA & Testing            | QA Lead             | Unit Tester, E2E Scripter (Playwright)              | `test_results.log`, coverage                                 |
+| 22                        | QA & Testing            | QA Lead             | Unit Tester, E2E Scripter (Playwright)              | Generated test files (not executed; no coverage yet)         |
 | 23                        | Cybersecurity           | CISO                | Red Teamer, Blue Teamer, Compliance Officer         | `security_audit.md`, patches                                 |
 | 24                        | Performance Engineering | Perf Lead           | Bundle Analyzer, Latency Optimizer                  | Optimization PRs                                             |
 | 25                        | Accessibility (A11y)    | A11y Lead           | WCAG Auditor, Screen Reader Tester                  | ARIA compliance                                              |
@@ -163,20 +186,26 @@ Inactive offices remain as "Dark Nodes" until activated by prompt context.
 
 **Office #13 (DevOps & Deployment)** is responsible for the entire autonomous deployment flow.
 
+The repo creation, commit, push, Vercel project creation, environment injection, and
+deploy steps are implemented. The QR code in step 8 and the monitor widget in 5.2 are
+**planned**.
+
 ### 5.1 Pipeline Steps
 
 | Step                | Action                                                                           | Validation                  |
 | ------------------- | -------------------------------------------------------------------------------- | --------------------------- |
 | 1. **Git Init**     | Create private repo `[project]-griffin` via GitHub API                         | Requires `GITHUB_TOKEN`     |
-| 2. **Commit**       | Stage all files, commit with conventional messages (`feat: initial scaffolding`) | —                           |
-| 3. **Push**         | Push to `main`                                                                   | —                           |
+| 2. **Commit**       | Stage all files, commit with conventional messages (`feat: initial scaffolding`) | n/a                         |
+| 3. **Push**         | Push to `main`                                                                   | n/a                         |
 | 4. **CI/CD Gen**    | Generate `.github/workflows/main.yml` tailored to stack                          | Lint + type-check must pass |
 | 5. **Vercel Claim** | Use Vercel CLI/API to create project                                             | Requires `VERCEL_TOKEN`     |
 | 6. **Env Inject**   | Set environment variables in Vercel project settings                             | Secrets masked in logs      |
-| 7. **Deploy**       | Trigger deployment, poll for `READY`                                             | —                           |
-| 8. **Deliver**      | Post QR code + live URL to Chat Hub                                              | Final deliverable           |
+| 7. **Deploy**       | Trigger deployment, poll for `READY`                                             | n/a                         |
+| 8. **Deliver**      | Post the live URL to the UI (QR code planned)                                    | Final deliverable           |
 
 ### 5.2 Deployment Monitor Widget
+
+**Planned.** This widget is not implemented yet.
 
 Bottom-right UI widget showing real-time status:
 
@@ -187,6 +216,11 @@ Bottom-right UI widget showing real-time status:
 ---
 
 ## 6. Directory Structure
+
+**Target layout.** The current repository differs: the backend is
+`backend/ml-service` (a Bun WebSocket service), the Python pipeline lives in `ML/`,
+and there is no `pyproject.toml` yet. See [README.md](README.md) for the current
+tree.
 
 ```
 /griffin
@@ -214,6 +248,8 @@ Bottom-right UI widget showing real-time status:
 ---
 
 ## 7. Database Schema (PostgreSQL)
+
+**Planned.** No database is wired up yet; this schema is a target.
 
 ```sql
 -- projects
@@ -337,6 +373,10 @@ bun run dev
 ---
 
 ## 12. Required Credentials (`.env`)
+
+The current build uses `GOOGLE_API_KEY` or `OPENROUTER_API_KEY` for the LLM and does
+not use a database. See [`.env.example`](.env.example) for the variables the app
+actually reads. The list below is the target set.
 
 ```env
 GITHUB_TOKEN=       # Repo creation
