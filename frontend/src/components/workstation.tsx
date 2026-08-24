@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import Editor from "@monaco-editor/react";
 import {
   FileCode,
   Eye,
@@ -42,62 +43,150 @@ const typeColors: Record<string, string> = {
   style: "text-purple-400",
 };
 
-function GhostTypingEditor({
-  content,
-  progress,
-  language,
-}: {
-  content: string;
-  progress: number;
-  language: string;
-}) {
-  const visibleChars = Math.floor((content.length * progress) / 100);
-  const visibleContent = content.slice(0, visibleChars);
+/** Map a loosely typed artifact language onto a Monaco language id. */
+function toMonacoLanguage(language: string): string {
+  const lang = (language ?? "").trim().toLowerCase();
+  const map: Record<string, string> = {
+    ts: "typescript",
+    typescript: "typescript",
+    tsx: "typescript",
+    js: "javascript",
+    jsx: "javascript",
+    javascript: "javascript",
+    mjs: "javascript",
+    cjs: "javascript",
+    py: "python",
+    python: "python",
+    rb: "ruby",
+    ruby: "ruby",
+    go: "go",
+    rs: "rust",
+    rust: "rust",
+    java: "java",
+    c: "c",
+    cpp: "cpp",
+    cs: "csharp",
+    php: "php",
+    json: "json",
+    html: "html",
+    htm: "html",
+    css: "css",
+    scss: "scss",
+    less: "less",
+    md: "markdown",
+    markdown: "markdown",
+    yml: "yaml",
+    yaml: "yaml",
+    xml: "xml",
+    sql: "sql",
+    sh: "shell",
+    bash: "shell",
+    shell: "shell",
+    dockerfile: "dockerfile",
+  };
+  return map[lang] ?? (lang || "plaintext");
+}
+
+/** Read only Monaco options shared by the artifact source view. */
+const MONACO_OPTIONS = {
+  readOnly: true,
+  domReadOnly: true,
+  automaticLayout: true,
+  minimap: { enabled: false },
+  fontSize: 13,
+  lineNumbers: "on",
+  scrollBeyondLastLine: false,
+  smoothScrolling: true,
+  wordWrap: "on",
+  renderLineHighlight: "none",
+  padding: { top: 12, bottom: 12 },
+  scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
+  fontLigatures: true,
+} as const;
+
+/**
+ * Progressively reveal `code` character by character over a short, bounded
+ * duration whenever the active artifact changes, producing a ghost typing
+ * effect that settles on the full content.
+ */
+function useGhostReveal(code: string, artifactId: string) {
+  const [state, setState] = useState<{ revealed: number; done: boolean }>({
+    revealed: 0,
+    done: false,
+  });
+  const codeRef = useRef(code);
+  codeRef.current = code;
+  const frameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setState({ revealed: 0, done: false });
+    const start = performance.now();
+
+    const step = (now: number) => {
+      const total = codeRef.current.length;
+      const duration = Math.min(1200, Math.max(350, total * 2.5));
+      const t = total === 0 ? 1 : Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      if (t < 1) {
+        setState({ revealed: Math.floor(total * eased), done: false });
+        frameRef.current = requestAnimationFrame(step);
+      } else {
+        setState({ revealed: total, done: true });
+      }
+    };
+
+    frameRef.current = requestAnimationFrame(step);
+    return () => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    };
+  }, [artifactId]);
+
+  return state;
+}
+
+/** Monaco based, read only source viewer with a ghost typing reveal. */
+function MonacoCodeView({ artifact }: { artifact: CodeArtifact }) {
+  const { revealed, done } = useGhostReveal(artifact.code, artifact.id);
   const [copied, setCopied] = useState(false);
 
+  const value = done ? artifact.code : artifact.code.slice(0, revealed);
+  const streaming = !done || artifact.progress < 100;
+  const percent = done
+    ? artifact.progress
+    : Math.floor((revealed / Math.max(1, artifact.code.length)) * 100);
 
   function handleCopy() {
-    navigator.clipboard.writeText(content);
+    navigator.clipboard.writeText(artifact.code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
 
   return (
-    <div className="relative h-full bg-muted/30 rounded-lg overflow-hidden font-mono text-sm">
-
-      <div className="absolute left-0 top-0 bottom-8 w-12 bg-muted/50 border-r border-border flex flex-col items-center py-4 text-xs text-muted-foreground overflow-hidden">
-        {visibleContent.split("\n").map((_, i) => (
-          <span key={i} className="leading-6">
-            {i + 1}
-          </span>
-        ))}
+    <div className="relative flex h-full flex-col overflow-hidden rounded-lg border border-border bg-[#1e1e1e]">
+      <div className="min-h-0 flex-1">
+        <Editor
+          height="100%"
+          theme="vs-dark"
+          path={artifact.filename}
+          language={toMonacoLanguage(artifact.language)}
+          value={value}
+          options={MONACO_OPTIONS}
+          loading={
+            <span className="text-sm text-muted-foreground">Loading editor…</span>
+          }
+        />
       </div>
 
-
-      <div className="ml-12 p-4 overflow-auto h-[calc(100%-2rem)]">
-        <pre className="text-foreground whitespace-pre-wrap">
-          <code>{visibleContent}</code>
-          {progress < 100 && (
-            <motion.span
-              animate={{ opacity: [1, 0] }}
-              transition={{ duration: 0.5, repeat: Infinity }}
-              className="inline-block w-2 h-4 bg-primary ml-0.5"
-            />
-          )}
-        </pre>
-      </div>
-
-
-      <div className="absolute bottom-0 left-0 right-0 h-8 bg-card border-t border-border flex items-center px-4 gap-4 text-xs">
+      <div className="flex h-8 items-center gap-4 border-t border-border bg-card px-4 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
-          {progress < 100 ? (
+          {streaming ? (
             <>
               <motion.span
                 animate={{ opacity: [1, 0.5] }}
                 transition={{ duration: 1, repeat: Infinity }}
                 className="w-2 h-2 rounded-full bg-emerald-400"
               />
-              Streaming…
+              Typing…
             </>
           ) : (
             <>
@@ -107,14 +196,17 @@ function GhostTypingEditor({
           )}
         </span>
         <Separator orientation="vertical" className="h-4" />
-        <span>{progress}%</span>
+        <span>{percent}%</span>
         <div className="flex-1" />
-        <button onClick={handleCopy} className="hover:text-foreground transition-colors flex items-center gap-1">
+        <button
+          onClick={handleCopy}
+          className="hover:text-foreground transition-colors flex items-center gap-1"
+        >
           {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
           {copied ? "Copied" : "Copy"}
         </button>
         <Separator orientation="vertical" className="h-4" />
-        <span>{language}</span>
+        <span>{artifact.language}</span>
         <span>UTF-8</span>
       </div>
     </div>
@@ -189,7 +281,7 @@ function LivePreview({ artifact }: { artifact: CodeArtifact | null }) {
   if (!artifact) {
     return (
       <div className="h-full bg-muted/30 rounded-lg flex items-center justify-center text-muted-foreground">
-        No component to preview — send a request to generate code.
+        No component to preview yet. Send a request to generate code.
       </div>
     );
   }
@@ -322,7 +414,7 @@ export function Workstation() {
 
       {/* Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar — artifact list */}
+        {/* Sidebar: artifact list */}
         <div className="w-64 border-r border-border bg-card/50 flex flex-col">
           <div className="p-3">
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -377,11 +469,7 @@ export function Workstation() {
 
             <TabsContent value="code" className="flex-1 mt-4">
               {activeArtifact ? (
-                <GhostTypingEditor
-                  content={activeArtifact.code}
-                  progress={activeArtifact.progress}
-                  language={activeArtifact.language}
-                />
+                <MonacoCodeView key={activeArtifact.id} artifact={activeArtifact} />
               ) : (
                 <div className="h-full bg-muted/30 rounded-lg flex items-center justify-center text-muted-foreground">
                   Select an artifact to view its source code.
