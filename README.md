@@ -26,13 +26,61 @@ Griffin: [Generates HTML, CSS, JS, tests, README] → Pushes to GitHub → Deplo
 ## Features
 
 - **🤖 Multi-Agent AI Pipeline** , a dynamic chain of specialized AI offices, selected per prompt by the CEO office and run in sequence
-- **⚡ Real-time Streaming** , Watch progress live as code is generated
+- **⚡ Real-time Streaming** , Watch office status and logs stream live as the pipeline runs
 - **📁 Complete Project Generation** , Source code, tests, documentation
 - **🔗 Auto GitHub Integration** , Repositories created and code pushed automatically
 - **🌐 Auto Vercel Deployment** , Live URLs generated for every project
 - **💬 Interactive Chat Interface** , Natural conversation with the AI studio
 - **🖥️ Terminal View** , Full visibility into the generation process
 - **🎨 Modern UI** , Built with Next.js 16, React 19, and Tailwind CSS
+
+---
+
+## Implemented vs Roadmap
+
+Griffin is an early prototype. This section separates what runs today from what is
+still planned, so nothing here is oversold. The wider vision lives in
+[REQUIREMENTS.md](REQUIREMENTS.md), which is a target specification rather than a
+description of the current build.
+
+### Implemented today
+
+- **Dynamic office chain (LangGraph).** The CEO office runs first, picks which
+  offices to activate for a given prompt, and the graph routes through only those
+  offices before finishing at DevOps.
+- **About a dozen offices.** CEO, Product Manager, Architect, Cost Optimizer, UI
+  Designer, API Designer, Frontend Engineer, Backend Engineer, Database Engineer,
+  QA Engineer, Security Officer, Tech Writer, and DevOps are implemented.
+- **GitHub and Vercel automation.** The DevOps office creates a GitHub repo,
+  pushes the generated code, and deploys to Vercel.
+- **Offline mock provider.** `LLM_PROVIDER=mock` runs the whole chain with no API
+  key and no network, and a pytest suite exercises it.
+- **GitHub Actions CI.** Runs the Python tests, a frontend build, and an
+  ml-service bundle check on every push and pull request.
+- **Live Blueprint Canvas.** Office status events stream over the WebSocket and
+  drive the canvas node states in real time.
+- **Cost Dashboard.** Fed by the real per-call token usage recorded during a run.
+- **Project naming.** The generated project name is parsed from the pipeline
+  output and shown in the UI.
+
+### Roadmap (not yet implemented)
+
+- **FastAPI backend.** The backend today is a Bun WebSocket service that spawns the
+  Python CLI, not a FastAPI app.
+- **PostgreSQL persistence.** Nothing is stored in a database yet; a run keeps
+  state in memory and writes generated code to `sandbox/`.
+- **The full 26-office catalog.** About a dozen offices exist today; the rest are
+  planned.
+- **Monaco or xterm based Workstation with code streaming.** The current
+  Workstation is a tabbed artifact viewer. It does not embed Monaco or xterm and
+  does not stream code character by character.
+- **Full multiverse instancing.** The Multiverse view is a visual scene, not real
+  isolated universe instances.
+- **God Mode terminal that acts.** Terminal commands return canned responses; they
+  do not perform actions yet.
+- **QA that runs a test suite.** The QA office generates best-effort test files; it
+  does not execute them, run a full test suite, or produce coverage.
+- **Zero-touch deploy monitor widget and QR code.** Not implemented.
 
 ---
 
@@ -83,7 +131,7 @@ Griffin: [Generates HTML, CSS, JS, tests, README] → Pushes to GitHub → Deplo
 
 ### AI Pipeline (Python)
 - **Agent Framework:** LangGraph + LangChain
-- **LLM Providers:** Google Gemini / OpenRouter
+- **LLM Providers:** Google Gemini, OpenRouter, or an offline mock (`LLM_PROVIDER=mock`)
 - **Git Integration:** PyGithub + GitPython
 - **Deployment:** Vercel REST API + Requests
 - **Environment:** Python 3.10+

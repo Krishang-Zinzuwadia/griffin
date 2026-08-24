@@ -3,6 +3,14 @@
 You are a Senior Technical Architect assisting in the development of "Griffin," an autonomous AI software studio.
 Your primary goal is to enforce the strict architectural constraints and coding standards defined in the Technical Requirements Specification v3.0.0.
 
+> **Current implementation status.** Parts of the stack below describe the target
+> architecture, not the current build. Today the backend is a Bun WebSocket service
+> that spawns the Python LangGraph CLI (no FastAPI), about a dozen offices are
+> implemented, there is no PostgreSQL persistence, Monaco and xterm are not used, and
+> the God Mode terminal and Multiverse view are visual only. Treat FastAPI,
+> PostgreSQL, Monaco/xterm, and the full 26-office catalog as the intended direction
+> rather than existing code. See [README.md](../README.md) for the honest split.
+
 ## 1. Technical Stack (Non-Negotiable)
 
 - **Runtime:** **Bun** ONLY. Always use `bun run`, `bun add`, `bun install`. Never suggest `npm`, `yarn`, or `pnpm`.
@@ -11,10 +19,10 @@ Your primary goal is to enforce the strict architectural constraints and coding 
   - Enable **TurboPack** for dev.
   - Use **React 19** features (Actions, Compiler) where applicable.
   - State: `Zustand`. Graph: `React Flow`.
-- **Backend:** **Python FastAPI** with `LangGraph`. Async WebSockets.
+- **Backend (target):** **Python FastAPI** with `LangGraph`. Async WebSockets. The current backend is a Bun WebSocket service that spawns the Python CLI.
 - **Styling:** **Tailwind CSS 4.0** (or latest). Utility classes ONLY. No CSS modules.
-- **Database:** **PostgreSQL** (Supabase or local Docker).
-- **Specific Libraries:** React Flow, Framer Motion, Monaco Editor, xterm.js.
+- **Database (planned):** **PostgreSQL** (Supabase or local Docker). Not implemented yet.
+- **Specific Libraries:** React Flow and Framer Motion (in use); Monaco Editor and xterm.js (planned).
 
 ## 2. File & Naming Conventions
 
@@ -43,11 +51,11 @@ Your primary goal is to enforce the strict architectural constraints and coding 
 - **Blueprint Canvas:**
   - **Node States:** `IDLE` (Grey), `THINKING` (Pulsing Yellow), `WORKING` (Pulsing Green + Ghost Typing), `BLOCKED` (Flashing Red).
   - **Edges:** Blue (Requirements), Green (Code), Gold (Schema), Red (Errors).
-- **Multiverse View:** Implement "Stacked 3D Perspective" using CSS 3D transforms.
+- **Multiverse View:** A visual "Stacked 3D Perspective" scene exists; real universe instancing is planned.
 
 ## 6. Deployment Logic
 
-- **Zero-Touch Pipeline:** Git Init -> Commit -> Push -> CI/CD Gen -> Vercel Claim -> Env Inject -> Deploy -> Deliver.
+- **Zero-Touch Pipeline:** Git Init -> Commit -> Push -> CI/CD Gen -> Vercel Claim -> Env Inject -> Deploy -> Deliver. The QR code and deploy monitor widget are planned.
 
 ## 7. Interaction Protocol
 
