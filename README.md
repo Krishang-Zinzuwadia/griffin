@@ -316,23 +316,41 @@ LLM_PROVIDER=mock python -m ML.main "make a simple counter page"
 
 ## 🌐 Deployment
 
-### Vercel (Recommended)
+Griffin ships as two deployable pieces: the Next.js frontend and a Python backend
+that runs the office pipeline. They talk over a WebSocket.
 
-1. Push your code to GitHub
-2. Import repository in Vercel dashboard
-3. Set environment variables in Vercel settings
-4. Deploy
+### 1. Backend (FastAPI plus the Python pipeline)
 
-### Manual Server
+The repo root `Dockerfile` builds the backend container (the FastAPI service in
+`backend/api` plus the `ML/` pipeline it spawns). It works on any container host
+(Railway, Render, Fly, or your own server). `railway.toml` is preconfigured to build it.
+
+Build and run locally:
 
 ```bash
-# Build frontend
-cd frontend
-bun run build
+docker build -t griffin-backend .
+docker run -e LLM_PROVIDER=gemini -e GOOGLE_API_KEY=... -p 8000:8000 griffin-backend
+```
 
-# Start production servers
-cd backend/ml-service && bun run start  # Terminal 1
-cd frontend && bun run start            # Terminal 2
+Set these environment variables on the host for a real run (see the reference table):
+`LLM_PROVIDER` and its key (`GOOGLE_API_KEY` or `OPENROUTER_API_KEY`), and optionally
+`GITHUB_TOKEN`, `GITHUB_OWNER`, and `VERCEL_TOKEN` so generated projects are pushed and
+deployed. `DATABASE_URL` switches persistence from the default SQLite to Postgres. With
+no keys the backend runs in offline mock mode. The health check is `GET /`; the
+WebSocket endpoint is `/ws`.
+
+### 2. Frontend (Vercel)
+
+1. Import the repository in Vercel and set the root directory to `frontend`.
+2. Set `NEXT_PUBLIC_ORCHESTRATOR_URL` to your backend WebSocket URL, for example
+   `wss://your-backend-host/ws` (use `wss` from an https site).
+3. Deploy. The frontend build keeps the app router API routes; static export is only
+   used for the Tauri desktop bundle.
+
+### Local full stack
+
+```bash
+bun run dev   # starts the ML websocket service and the frontend together
 ```
 
 ---
