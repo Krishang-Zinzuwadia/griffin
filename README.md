@@ -112,10 +112,8 @@ Griffin: [Generates HTML, CSS, JS, tests, README] → Pushes to GitHub → Deplo
 git clone <repository-url>
 cd griffin
 
-# Install JavaScript dependencies for each package
-bun install
-cd frontend && bun install && cd ..
-cd backend/ml-service && bun install && cd ../..
+# Install JavaScript dependencies for every package in one step
+bun run setup
 
 # Install Python dependencies
 cd ML
@@ -153,14 +151,17 @@ NEXT_PUBLIC_ML_SERVICE_URL=ws://localhost:9100
 
 ### 3. Run the Application
 
-**Terminal 1 , Start ML Service:**
+Start both the ML service and the frontend together:
+
 ```bash
-bun run dev:ml
+bun run dev
 ```
 
-**Terminal 2 , Start Frontend:**
+Or run them in separate terminals:
+
 ```bash
-bun run dev:frontend
+bun run dev:ml        # Terminal 1: ML WebSocket service on port 9100
+bun run dev:frontend  # Terminal 2: Next.js dev server on port 3000
 ```
 
 The application will be available at `http://localhost:3000`
@@ -217,14 +218,18 @@ griffin/
 ### Available Scripts
 
 ```bash
+# Setup
+bun run setup          # Install dependencies for every package
+
 # Development
-bun run dev:ml         # Start ML Service (port 9100)
-bun run dev:frontend   # Start Next.js dev server (port 3000)
+bun run dev            # Start ML service and frontend together
+bun run dev:ml         # Start ML service only (port 9100)
+bun run dev:frontend   # Start Next.js dev server only (port 3000)
 bun run dev:tauri      # Start Tauri desktop app
 
 # Production
-cd frontend && bun run build   # Build frontend for production
-cd frontend && bun run start   # Start production server
+bun run build          # Build the frontend for production
+bun run start          # Start the production frontend server
 ```
 
 ### Running Tests
@@ -299,6 +304,17 @@ cd frontend && bun run start            # Terminal 2
 **Vercel Deployment Fails**
 - Check `VERCEL_TOKEN` is valid
 - Ensure token has project creation permissions
+
+**Frontend build reports missing modules on Windows**
+- Bun plus the Turbopack builder can fail to resolve some nested transitive
+  modules (for example `picocolors`) on Windows. If you hit this locally, install
+  the frontend with `npm install` inside `frontend/` as a workaround. This affects
+  local Windows builds only, not CI or Vercel.
+
+**Production build fails with an `output: export` error**
+- The default `bun run build` produces a normal server build so the API routes
+  work. Static export is opt in and only for the Tauri desktop bundle, enabled with
+  `NEXT_OUTPUT_EXPORT=1`.
 
 ### Getting API Keys
 

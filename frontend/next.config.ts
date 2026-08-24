@@ -1,10 +1,12 @@
 import type { NextConfig } from "next";
 
-const isProd = process.env.NODE_ENV === "production";
+// Static export is opt in and only for the Tauri desktop bundle. A normal web or
+// CI build keeps the server runtime so the app router API routes (auth, git) work.
+// The Tauri build sets NEXT_OUTPUT_EXPORT=1 in its beforeBuildCommand.
+const staticExport = process.env.NEXT_OUTPUT_EXPORT === "1";
 
 const nextConfig: NextConfig = {
-  // Only use static export for Tauri production builds (not Vercel)
-  ...(isProd && !process.env.VERCEL ? { output: "export" } : {}),
+  ...(staticExport ? { output: "export" } : {}),
 
   // Silence turbopack "multiple lockfiles" warning
   turbopack: {
