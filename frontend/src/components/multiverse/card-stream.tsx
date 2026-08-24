@@ -56,22 +56,6 @@ export function CardStream({
   // Scrolling only enabled after card expansion completes
   const canScroll = cardExpandProgress >= 1;
 
-  // Duplicate universes to ensure at least 10 cards are always rendered
-  const minCards = 10;
-  const repetitions =
-    universes.length === 0
-      ? 0
-      : Math.max(2, Math.ceil(minCards / universes.length));
-  const extendedUniverses = Array.from({ length: repetitions }, (_, repIndex) =>
-    universes.map((universe, idx) => ({
-      ...universe,
-      // Make each duplicate unique with a suffix
-      id: `${universe.id}-rep${repIndex}`,
-      originalIndex: idx,
-      repetitionIndex: repIndex,
-    })),
-  ).flat();
-
   // Scroll state - accumulates infinitely, wraps for position calculation
   const scrollOffset = useRef(0);
   const scrollVelocity = useRef(0);
@@ -82,15 +66,13 @@ export function CardStream({
       setHoveredIndex(index);
       if (onHoverChange) {
         if (index !== null) {
-          const extUniverse = extendedUniverses[index];
-          const originalUniverse = universes[extUniverse.originalIndex];
-          onHoverChange(originalUniverse, extUniverse.originalIndex);
+          onHoverChange(universes[index], index);
         } else {
           onHoverChange(null, null);
         }
       }
     },
-    [onHoverChange, extendedUniverses, universes],
+    [onHoverChange, universes],
   );
 
   // Handle wheel events for scrolling
@@ -128,10 +110,8 @@ export function CardStream({
     return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
   };
 
-  // Find the index of the active card in extendedUniverses (first occurrence)
-  const activeCardIndex = extendedUniverses.findIndex(
-    (u) => u.originalIndex === activeIndex && u.repetitionIndex === 0,
-  );
+  // The active card is the real universe at activeIndex
+  const activeCardIndex = activeIndex;
 
   // Animate cards each frame
   useFrame(() => {
@@ -149,17 +129,14 @@ export function CardStream({
     // Update each card's position
     if (groupRef.current) {
       const children = groupRef.current.children as THREE.Group[];
-      const numCards = extendedUniverses.length;
+      const numCards = universes.length;
       const { angle, spacing } = STREAM_CONFIG;
 
       // Eased expansion progress for smooth card pop-out animation
       const easedProgress = easeOutBack(cardExpandProgress);
 
       children.forEach((child, index) => {
-        const extUniverse = extendedUniverses[index];
-        const isActiveCard =
-          extUniverse.originalIndex === activeIndex &&
-          extUniverse.repetitionIndex === 0;
+        const isActiveCard = index === activeIndex;
 
         // Calculate position relative to active card (active card = center = 0)
         let relativeIndex = index - activeCardIndex;
@@ -225,7 +202,7 @@ export function CardStream({
         STREAM_CONFIG.originOffset.z,
       ]}
     >
-      {extendedUniverses.map((universe, index) => (
+      {universes.map((universe, index) => (
         <GlassCard
           key={universe.id}
           universe={universe}
@@ -236,19 +213,11 @@ export function CardStream({
             0,
           ]}
           isHovered={hoveredIndex === index}
-          isActive={
-            universe.originalIndex === activeIndex &&
-            universe.repetitionIndex === 0
-          }
+          isActive={index === activeIndex}
           onPointerEnter={() => handleHoverChange(index)}
           onPointerLeave={() => handleHoverChange(null)}
-          onClick={() =>
-            onSelectCard(
-              universes[universe.originalIndex],
-              universe.originalIndex,
-            )
-          }
-          index={universe.originalIndex}
+          onClick={() => onSelectCard(universes[index], index)}
+          index={index}
         />
       ))}
     </group>
