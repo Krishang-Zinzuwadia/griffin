@@ -1,0 +1,17 @@
+# Backend API service dependencies.
+#
+# SQLite is the default database so the whole service runs offline with no extra
+# infrastructure. PostgreSQL is supported by pointing DATABASE_URL at a
+# postgresql+psycopg:// URL, which uses the optional psycopg driver below.
+
+fastapi>=0.115
+uvicorn[standard]>=0.30
+sqlalchemy>=2.0
+websockets>=12.0
+
+# Optional PostgreSQL driver. Only needed when DATABASE_URL points at Postgres;
+# the default SQLite path does not use it.
+psycopg[binary]>=3.1
+
+# Used by fastapi.testclient.TestClient in the test suite.
+httpx>=0.27
