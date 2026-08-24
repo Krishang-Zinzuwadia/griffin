@@ -14,7 +14,7 @@ import time
 from colorama import Fore, Style
 from ..state import OfficeState
 from ..config import get_llm, LLM_MODEL, LLM_PROVIDER
-from ..utils import invoke_and_parse_json
+from ..utils import invoke_and_parse_json, get_token_usage_summary
 from ..logger import get_logger
 
 logger = get_logger("cost_optimizer")
@@ -324,11 +324,22 @@ def cost_optimizer_office(state: OfficeState) -> dict:
     # ── Calculate estimates ──────────────────────────────────────
     pipeline_estimate = estimate_pipeline_cost(active_offices, file_categories)
 
-    # ── Calculate actual usage so far ────────────────────────────
-    actual_input = token_usage.get("total_input_tokens", 0)
-    actual_output = token_usage.get("total_output_tokens", 0)
-    actual_cost = token_usage.get("total_cost_usd", 0.0)
-    calls_made = token_usage.get("total_calls", 0)
+    # ── Read ACTUAL usage so far from the global tracker ─────────
+    # ML.utils maintains the real token log, updated on every LLM call. By the
+    # time the Cost Optimizer runs (after ceo, product_manager and architect)
+    # it already holds real, non zero usage. state["token_usage"] is never
+    # populated mid run, so reading it here always reported zero. Robust and
+    # offline safe: fall back to empty usage if the tracker cannot be read.
+    real_usage: dict = {}
+    try:
+        real_usage = get_token_usage_summary()
+    except Exception as e:
+        logger.warning(f"Could not read live token usage (non-critical): {e}")
+
+    actual_input = real_usage.get("total_input_tokens", 0)
+    actual_output = real_usage.get("total_output_tokens", 0)
+    actual_cost = real_usage.get("total_cost_usd", 0.0)
+    calls_made = real_usage.get("total_calls", 0)
 
     # ── Print summary ────────────────────────────────────────────
     print(f"  {Fore.WHITE}📊 Model: {LLM_MODEL} ({LLM_PROVIDER}){Style.RESET_ALL}")
@@ -372,7 +383,7 @@ def cost_optimizer_office(state: OfficeState) -> dict:
     llm_analysis = {}
     try:
         llm = get_llm(temperature=0.2)
-        current_usage_str = json.dumps(token_usage, indent=2) if token_usage else "(no usage yet)"
+        current_usage_str = json.dumps(real_usage, indent=2) if calls_made else "(no usage yet)"
         messages = [
             ("system", COST_OPTIMIZER_SYSTEM),
             ("human", COST_OPTIMIZER_HUMAN.format(
@@ -428,6 +439,13 @@ def cost_optimizer_office(state: OfficeState) -> dict:
         f"est. ${pipeline_estimate['total_estimated_cost_usd']:.6f}, "
         f"actual so far ${actual_cost:.6f}. ({elapsed:.1f}s)"
     )
+    # Honest, tracker backed line: the real accumulated spend at this point in
+    # the run, sourced from ML.utils.get_token_usage_summary().
+    usage_msg = (
+        f"[COST_OPTIMIZER] Real usage so far (global tracker): "
+        f"{calls_made} calls, in={actual_input:,} tok, out={actual_output:,} tok, "
+        f"cost=${actual_cost:.6f}."
+    )
     logger.info(f"=== COST OPTIMIZER OFFICE — Exiting ({elapsed:.2f}s) ===")
 
     print(f"\n  {Fore.GREEN}✅ Cost analysis complete ({elapsed:.1f}s){Style.RESET_ALL}\n")
@@ -437,5 +455,5 @@ def cost_optimizer_office(state: OfficeState) -> dict:
             **token_usage,
             "cost_report": cost_report,
         },
-        "execution_logs": [log_msg],
+        "execution_logs": [log_msg, usage_msg],
     }
