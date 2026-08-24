@@ -1,0 +1,26 @@
+name: API
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  api:
+    name: FastAPI backend tests
+    runs-on: ubuntu-latest
+    env:
+      LLM_PROVIDER: mock
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install ML dependencies
+        run: pip install -r ML/requirements-dev.txt
+      - name: Install API dependencies
+        run: pip install -r backend/api/requirements.txt
+      - name: Run backend API test suite
+        working-directory: backend/api
+        run: python -m pytest
