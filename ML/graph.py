@@ -30,6 +30,21 @@ from .offices.tech_writer import tech_writer_office
 from .offices.cost_optimizer import cost_optimizer_office
 from .offices.devops import devops_office
 
+# ── Expanded office catalog (documentation & design offices) ─────
+from .offices.legal_compliance import legal_compliance_office
+from .offices.ux_research import ux_research_office
+from .offices.design_systems import design_systems_office
+from .offices.localization import localization_office
+from .offices.performance import performance_office
+from .offices.accessibility import accessibility_office
+from .offices.marketing import marketing_office
+from .offices.data_science import data_science_office
+from .offices.ai_ml import ai_ml_office
+from .offices.three_d import three_d_office
+from .offices.game_dev import game_dev_office
+from .offices.mobile import mobile_office
+from .offices.iot_embedded import iot_embedded_office
+
 
 # ── Office Registry (ordered by canonical execution sequence) ────
 # cost_optimizer is inserted after architect to analyse costs before coding
@@ -37,13 +52,26 @@ OFFICE_REGISTRY = OrderedDict([
     ("product_manager",    product_manager_office),
     ("architect",          architect_office),
     ("cost_optimizer",     cost_optimizer_office),
+    ("ux_research",        ux_research_office),
     ("ui_designer",        ui_designer_office),
+    ("design_systems",     design_systems_office),
+    ("localization",       localization_office),
     ("api_designer",       api_designer_office),
     ("frontend_engineer",  frontend_engineer_office),
     ("backend_engineer",   backend_engineer_office),
     ("database_engineer",  database_engineer_office),
+    ("mobile",             mobile_office),
+    ("iot_embedded",       iot_embedded_office),
+    ("ai_ml",              ai_ml_office),
+    ("data_science",       data_science_office),
+    ("three_d",            three_d_office),
+    ("game_dev",           game_dev_office),
     ("qa_engineer",        qa_engineer_office),
+    ("performance",        performance_office),
+    ("accessibility",      accessibility_office),
     ("security_officer",   security_officer_office),
+    ("legal_compliance",   legal_compliance_office),
+    ("marketing",          marketing_office),
     ("tech_writer",        tech_writer_office),
 ])
 
@@ -59,13 +87,26 @@ NODE_NAMES = {
     "product_manager": "Product Manager",
     "architect": "Architect",
     "cost_optimizer": "Cost Optimizer",
+    "ux_research": "UX Research",
     "ui_designer": "UI Designer",
+    "design_systems": "Design Systems",
+    "localization": "Localization",
     "api_designer": "API Designer",
     "frontend_engineer": "Frontend Engineer",
     "backend_engineer": "Backend Engineer",
     "database_engineer": "Database Engineer",
+    "mobile": "Mobile Engineering",
+    "iot_embedded": "IoT & Embedded",
+    "ai_ml": "AI & Machine Learning",
+    "data_science": "Data Science",
+    "three_d": "3D & Spatial",
+    "game_dev": "Game Development",
     "qa_engineer": "QA Engineer",
+    "performance": "Performance Engineering",
+    "accessibility": "Accessibility",
     "security_officer": "Security Officer",
+    "legal_compliance": "Legal & Compliance",
+    "marketing": "Marketing & Growth",
     "tech_writer": "Tech Writer",
     "devops_office": "DevOps",
 }
@@ -135,8 +176,8 @@ def _get_next_office(state: dict, current_id: str) -> str:
 def build_graph():
     """Construct and compile the dynamic office chain.
 
-    All 12 offices are registered as nodes, but conditional routing
-    ensures only CEO-selected offices are visited.
+    Every office in OFFICE_REGISTRY is registered as a node, but conditional
+    routing ensures only CEO-selected offices are visited.
     """
 
     graph = StateGraph(OfficeState)
