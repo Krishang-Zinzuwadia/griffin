@@ -1,0 +1,54 @@
+name: Backend image
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-run:
+    name: Build and run the backend container
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t griffin-backend .
+      - name: Run container (mock mode)
+        run: docker run -d --name griffin-be -e LLM_PROVIDER=mock -e GRIFFIN_OFFLINE=1 -p 8000:8000 griffin-backend
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 40); do
+            if curl -sf http://localhost:8000/ >/dev/null; then echo healthy; break; fi
+            sleep 2
+          done
+          curl -sf http://localhost:8000/ | grep -q '"status"'
+      - name: WebSocket smoke (full pipeline over the container)
+        run: |
+          python -m pip install --quiet websockets
+          python - <<'PY'
+          import asyncio, json, websockets
+          async def main():
+              async with websockets.connect("ws://localhost:8000/ws", max_size=None) as ws:
+                  await ws.send(json.dumps({"type": "prompt", "data": "make a simple counter page"}))
+                  kinds = set()
+                  done = False
+                  try:
+                      while True:
+                          raw = await asyncio.wait_for(ws.recv(), timeout=120)
+                          msg = json.loads(raw)
+                          kinds.add(msg.get("type"))
+                          if msg.get("type") == "complete":
+                              done = True
+                              break
+                  except Exception as exc:
+                      print("recv ended:", exc)
+                  print("received kinds:", sorted(kinds))
+                  assert "office_status" in kinds, kinds
+                  assert "token_usage" in kinds, kinds
+                  assert done, "no complete message"
+                  print("BACKEND CONTAINER OK")
+          asyncio.run(main())
+          PY
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs griffin-be || true

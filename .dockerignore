@@ -1,0 +1,16 @@
+.git
+**/node_modules
+**/.next
+**/out
+frontend
+src-tauri
+ML/sandbox
+sandbox
+**/__pycache__
+**/*.pyc
+ML/logs
+**/*.db
+secrets
+.env
+.env.*
+*.md
