@@ -234,9 +234,18 @@ bun run start          # Start the production frontend server
 
 ### Running Tests
 
+The pipeline ships with an offline mock provider, so the full office chain runs with
+no API key and no network. From the repo root:
+
 ```bash
-cd ML
-python -m pytest tests/  # If tests exist
+pip install -r ML/requirements.txt
+python -m pytest
+```
+
+To run the whole generator offline against a prompt (writes to `ML/sandbox/`):
+
+```bash
+LLM_PROVIDER=mock python -m ML.main "make a simple counter page"
 ```
 
 ---
