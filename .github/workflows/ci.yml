@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    name: Python pipeline tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install ML dependencies
+        run: pip install -r ML/requirements.txt
+      - name: Run offline test suite
+        run: python -m pytest
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        working-directory: frontend
+        run: bun install
+      - name: Build
+        working-directory: frontend
+        run: bun run build
+
+  ml-service:
+    name: ML service bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        working-directory: backend/ml-service
+        run: bun install
+      - name: Bundle check
+        working-directory: backend/ml-service
+        run: bun build index.ts --target node --outdir build
