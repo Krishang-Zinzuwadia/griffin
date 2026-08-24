@@ -25,6 +25,7 @@ import {
   useOrchestratorStore,
   type ChatMessage,
 } from "@/lib/orchestrator-store";
+import { DeployMonitor } from "@/components/deploy-monitor";
 
 /** Agent descriptor used for @-mentions in the comms hub. */
 interface AgentRef {
@@ -475,6 +476,9 @@ export function ChatPage() {
           </div>
         </div>
       </div>
+
+      {/* Deployment Monitor overlay (fixed, bottom-right) */}
+      <DeployMonitor />
     </div>
   );
 }
