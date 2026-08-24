@@ -1,22 +1,25 @@
 {
   "name": "griffin",
-  "module": "index.ts",
   "type": "module",
   "private": true,
   "devDependencies": {
     "@types/bun": "latest",
     "@types/ws": "^8.18.1",
-    "bun-types": "^1.3.9"
+    "bun-types": "^1.3.9",
+    "concurrently": "^9.1.0"
   },
   "peerDependencies": {
     "typescript": "^5",
     "@tauri-apps/cli": "^2.9.6"
   },
   "scripts": {
-    "dev": "echo \"Use dev:ml and dev:frontend in separate terminals\"",
+    "setup": "bun install && cd frontend && bun install && cd ../backend/ml-service && bun install",
+    "dev": "concurrently -k -n ml,web -c blue,green \"bun run dev:ml\" \"bun run dev:frontend\"",
     "dev:ml": "cd backend/ml-service && bun run start",
     "dev:frontend": "cd frontend && bun next dev --turbo",
     "dev:tauri": "bun tauri dev",
+    "build": "cd frontend && bun run build",
+    "start": "cd frontend && bun run start",
     "tauri": "tauri"
   },
   "dependencies": {}
