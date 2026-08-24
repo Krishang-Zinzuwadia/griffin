@@ -23,7 +23,7 @@ const TOTAL_ANIMATION = CAMERA_ZOOM_DURATION + CARD_EXPAND_DURATION;
 
 /**
  * Convert git branches to universe data for the 3D scene.
- * Arranges branches in alternating pattern: main, branch, main, branch, etc.
+ * Each real branch maps to exactly one universe (card); nothing is duplicated.
  */
 function branchesToUniverses(branches: GitBranch[]): UniverseData[] {
   const colors = [
@@ -39,38 +39,8 @@ function branchesToUniverses(branches: GitBranch[]): UniverseData[] {
     "#a03370",
   ];
 
-  // Find the active (main) branch
-  const activeBranch = branches.find((b) => b.isActive);
-  const otherBranches = branches.filter((b) => !b.isActive);
-
-  // If no branches or only one branch, return as-is
-  if (branches.length <= 1 || !activeBranch) {
-    return branches.map((branch, index) => ({
-      id: branch.id,
-      name: branch.name,
-      description: branch.isActive ? "Active branch" : "Branch",
-      branchName: branch.name,
-      color: colors[index % colors.length],
-    }));
-  }
-
-  // Create alternating pattern: main, other, main, other, etc.
-  const alternatingBranches: GitBranch[] = [];
-  for (let i = 0; i < Math.max(otherBranches.length, 1); i++) {
-    // Add main branch
-    alternatingBranches.push(activeBranch);
-    // Add other branch if available
-    if (i < otherBranches.length) {
-      alternatingBranches.push(otherBranches[i]);
-    }
-  }
-  // Add one more main at the end if we have other branches
-  if (otherBranches.length > 0) {
-    alternatingBranches.push(activeBranch);
-  }
-
-  return alternatingBranches.map((branch, index) => ({
-    id: `${branch.id}-${index}`, // Make each instance unique
+  return branches.map((branch, index) => ({
+    id: branch.id,
     name: branch.name,
     description: branch.isActive ? "Active branch" : "Branch",
     branchName: branch.name,
@@ -289,10 +259,13 @@ export function MultiverseScene({
   const animationRef = useRef<number | null>(null);
   const startTimeRef = useRef<number | null>(null);
 
-  // Convert branches to universes with alternating pattern
+  // Convert branches to universes (one card per real branch)
   const universes = branchesToUniverses(branches);
-  // In alternating pattern, active branch is always first (index 0) or middle
-  const activeIndex = 0;
+  // Focus the camera on the active branch, wherever it sits in the list
+  const activeIndex = Math.max(
+    0,
+    branches.findIndex((b) => b.isActive),
+  );
 
   // Fetch branches on mount
   useEffect(() => {
