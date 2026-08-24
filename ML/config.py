@@ -23,6 +23,15 @@ load_dotenv(_secrets_path, override=True)
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openrouter").lower()
 LLM_MODEL = os.getenv("LLM_MODEL", "google/gemini-2.0-flash-001")
 
+# ── Offline Mode ─────────────────────────────────────────────────
+# When offline, the DevOps office writes the project to the local sandbox and
+# skips GitHub and Vercel even if tokens are present. The mock provider always
+# implies offline so tests never touch the network.
+OFFLINE = (
+    os.getenv("GRIFFIN_OFFLINE", "").lower() in ("1", "true", "yes")
+    or LLM_PROVIDER == "mock"
+)
+
 # ── Gemini Config ────────────────────────────────────────────────
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 
@@ -45,9 +54,14 @@ def get_llm(temperature: float = 0.4):
     """Return a configured LLM instance based on the LLM_PROVIDER env var.
 
     Provider options:
+      - "mock"       → deterministic offline responses (no key, no network)
       - "openrouter" → ChatOpenAI pointed at OpenRouter's API
       - "gemini"     → ChatGoogleGenerativeAI (direct Gemini)
     """
+    if LLM_PROVIDER == "mock":
+        from .mock_llm import MockLLM
+        return MockLLM(temperature=temperature)
+
     if LLM_PROVIDER == "openrouter":
         if not OPENROUTER_API_KEY:
             raise ValueError(

@@ -21,7 +21,7 @@ from github import Github, GithubException
 from git import Repo as GitRepo
 
 from ..state import OfficeState
-from ..config import GITHUB_TOKEN, GITHUB_OWNER, SANDBOX_DIR, VERCEL_TOKEN
+from ..config import GITHUB_TOKEN, GITHUB_OWNER, SANDBOX_DIR, VERCEL_TOKEN, OFFLINE
 from ..logger import get_logger
 
 logger = get_logger("devops")
@@ -512,9 +512,14 @@ def devops_office(state: OfficeState) -> dict:
     # ── Step 3: Create GitHub repo & push ───────────────────────
     github_url = ""
 
-    if not GITHUB_TOKEN or not GITHUB_OWNER:
+    if OFFLINE or not GITHUB_TOKEN or not GITHUB_OWNER:
+        reason = (
+            "Offline mode active"
+            if OFFLINE
+            else "GITHUB_TOKEN or GITHUB_OWNER not set"
+        )
         msg = (
-            "[DEVOPS] GITHUB_TOKEN or GITHUB_OWNER not set. "
+            f"[DEVOPS] {reason}. "
             "Skipping GitHub push. Files are in sandbox/."
         )
         print(f"  {Fore.YELLOW}⚠️  {msg}{Style.RESET_ALL}")
@@ -586,8 +591,9 @@ def devops_office(state: OfficeState) -> dict:
     # ── Step 4: Deploy to Vercel ────────────────────────────────
     vercel_url = ""
 
-    if not VERCEL_TOKEN:
-        msg = "[DEVOPS] VERCEL_TOKEN not set. Skipping Vercel deployment."
+    if OFFLINE or not VERCEL_TOKEN:
+        reason = "Offline mode active" if OFFLINE else "VERCEL_TOKEN not set"
+        msg = f"[DEVOPS] {reason}. Skipping Vercel deployment."
         print(f"  {Fore.YELLOW}⚠️  {msg}{Style.RESET_ALL}")
         logger.warning(msg)
         logs.append(msg)
