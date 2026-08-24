@@ -22,6 +22,10 @@ VALID_OFFICES = {
     "product_manager", "architect", "ui_designer", "api_designer",
     "frontend_engineer", "backend_engineer", "database_engineer",
     "qa_engineer", "security_officer", "tech_writer",
+    # Expanded catalog offices (each ships at least one artifact file)
+    "legal_compliance", "ux_research", "design_systems", "localization",
+    "performance", "accessibility", "marketing", "data_science",
+    "ai_ml", "three_d", "game_dev", "mobile", "iot_embedded",
 }
 
 
