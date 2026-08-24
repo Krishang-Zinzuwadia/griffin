@@ -329,11 +329,16 @@ def _record_token_usage(
     }
     _token_usage_log.append(entry)
 
-    logger.info(
+    token_line = (
         f"[{office_name}] Token usage: "
         f"in={input_tokens}, out={output_tokens}, "
         f"cost=${cost:.6f}, latency={latency:.2f}s"
     )
+    logger.info(token_line)
+    # Also emit to stdout so the ML service can forward per call usage to the
+    # Cost Dashboard. The console log handler is WARNING only, so without this
+    # the dashboard never fills during a run.
+    print(token_line, flush=True)
 
     return entry
 

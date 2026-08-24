@@ -86,6 +86,8 @@ def main():
     print("╚══════════════════════════════════════════════════════════╝")
     print(f"{Style.RESET_ALL}")
 
+    # Plain (no color codes) so the ML service can extract a clean project name.
+    print(f"  Project Name: {final_state.get('project_name', '')}")
     print(f"  {Fore.WHITE}⏱️  Time elapsed: {elapsed:.1f}s{Style.RESET_ALL}")
     print(f"  {Fore.WHITE}📁 Files created: {len(final_state.get('codebase', {}))}{Style.RESET_ALL}")
 

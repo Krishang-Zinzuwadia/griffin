@@ -406,6 +406,33 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
           }));
         }
 
+        // Handle live office status updates -> Blueprint Canvas nodes
+        if (msg.type === 'office_status') {
+          const evt = msg.data as unknown as {
+            office: string;
+            name: string;
+            status: string;
+          };
+          if (evt && evt.office) {
+            const valid: WrapperStatus[] = ["IDLE", "THINKING", "WORKING", "BLOCKED"];
+            const status = (valid.includes(evt.status as WrapperStatus)
+              ? evt.status
+              : "WORKING") as WrapperStatus;
+            set((state) => ({
+              wrappers: {
+                ...state.wrappers,
+                [evt.office]: {
+                  id: evt.office,
+                  type: evt.office,
+                  status,
+                  lastSeen: Date.now(),
+                  meta: { name: evt.name ?? evt.office, type: evt.office },
+                },
+              },
+            }));
+          }
+        }
+
         // Handle completion
         if (msg.type === 'complete') {
           const files = (msg as any).files as string[] | undefined;
