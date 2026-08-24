@@ -10,8 +10,9 @@ const __dirname = dirname(__filename);
 const PORT = Number(process.env.ML_SERVICE_PORT ?? '9100');
 
 interface Message {
-	type: 'prompt' | 'progress' | 'complete' | 'error';
+	type: 'prompt' | 'progress' | 'complete' | 'error' | 'user_command';
 	data: string;
+	command?: string;
 	githubUrl?: string;
 	projectName?: string;
 }
@@ -28,12 +29,40 @@ console.log(`ML Service starting on ws://0.0.0.0:${PORT}`);
 wss.on('connection', (ws: WebSocket) => {
 	console.log('Frontend connected');
 
+	// Track the currently running ML child process for this connection so
+	// inbound control commands (e.g. /evacuate) can act on it.
+	let currentMlProcess: ReturnType<typeof spawn> | null = null;
+	// When armed via "/deploy --force", force deployment on the next prompt run.
+	let forceDeploy = false;
+
 	ws.on('message', (data: WebSocket.RawData) => {
 		let msg: Message;
 		try {
 			msg = JSON.parse(String(data));
 		} catch {
 			console.warn('Invalid message:', String(data));
+			return;
+		}
+
+		// Inbound control commands from the client. These must never crash the server.
+		if (msg.type === 'user_command') {
+			const command = (msg.command ?? '').trim();
+			if (command === '/evacuate') {
+				if (currentMlProcess) {
+					try {
+						currentMlProcess.kill();
+					} catch {
+						// Ignore kill errors
+					}
+					currentMlProcess = null;
+				}
+				ws.send(JSON.stringify({ type: 'terminal', data: '[system] session evacuated' }));
+			} else if (command === '/deploy --force') {
+				forceDeploy = true;
+				ws.send(JSON.stringify({ type: 'terminal', data: '[system] force deploy armed' }));
+			} else {
+				ws.send(JSON.stringify({ type: 'terminal', data: '[system] unknown command' }));
+			}
 			return;
 		}
 
@@ -55,12 +84,20 @@ wss.on('connection', (ws: WebSocket) => {
 
 			console.log(`Running from: ${projectRoot}`);
 
+			// Consume the one-shot force-deploy flag for this run.
+			const forceDeployThisRun = forceDeploy;
+			forceDeploy = false;
+
 			const mlProcess = spawn(pythonCmd, ['-m', 'ML.main', prompt], {
 				cwd: projectRoot,
-				env: { ...process.env },
+				env: {
+					...process.env,
+					...(forceDeployThisRun ? { GRIFFIN_FORCE_DEPLOY: '1' } : {}),
+				},
 				shell: true,
 				windowsHide: true, // Hide console window on Windows
 			});
+			currentMlProcess = mlProcess;
 
 			let stdoutBuffer = '';
 			let stderrBuffer = '';
@@ -81,6 +118,10 @@ wss.on('connection', (ws: WebSocket) => {
 							const evt = JSON.parse(cleanLine.slice('@@GRIFFIN_EVENT '.length));
 							if (evt && evt.kind === 'office_status') {
 								ws.send(JSON.stringify({ type: 'office_status', data: evt }));
+							} else if (evt && evt.kind === 'code_artifact') {
+								ws.send(JSON.stringify({ type: 'code_artifact', data: evt }));
+							} else if (evt && evt.kind === 'deploy_step') {
+								ws.send(JSON.stringify({ type: 'deploy_step', data: evt }));
 							}
 						} catch {
 							// Ignore malformed event lines
@@ -135,6 +176,9 @@ wss.on('connection', (ws: WebSocket) => {
 			mlProcess.on('close', (code) => {
 				if (processExited) return; // Prevent double execution
 				processExited = true;
+
+				// Release the tracked reference once this run finishes.
+				if (currentMlProcess === mlProcess) currentMlProcess = null;
 
 				// Clean up process references to avoid Windows handle errors
 				try {
@@ -219,6 +263,9 @@ wss.on('connection', (ws: WebSocket) => {
 			mlProcess.on('error', (err) => {
 				if (processExited) return;
 				processExited = true;
+
+				// Release the tracked reference on spawn failure.
+				if (currentMlProcess === mlProcess) currentMlProcess = null;
 
 				ws.send(JSON.stringify({
 					type: 'error',

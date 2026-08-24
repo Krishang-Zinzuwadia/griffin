@@ -29,6 +29,8 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   isUser: boolean;
+  /** Optional routing channel derived from the author or office name. */
+  channel?: string;
 }
 
 /** A generated code artifact from a specialist wrapper. */
@@ -44,6 +46,13 @@ export interface CodeArtifact {
   status: "streaming" | "complete";
   progress: number;
   componentName?: string;
+}
+
+/** A single deployment pipeline step reported by the backend. */
+export interface DeployStep {
+  step: string;
+  status: string;
+  url?: string;
 }
 
 /** A single LLM call token usage record. */
@@ -107,11 +116,13 @@ interface OrchestratorState {
   tokenUsageLog: TokenUsageEntry[];
   costSummary: CostSummary;
   costMessages: string[];
+  deploySteps: DeployStep[];
 
   connect: (orchestratorUrl: string) => void;
   disconnect: () => void;
   sendChatMessage: (text: string) => void;
   sendEnvelope: (envelope: Envelope) => void;
+  sendUserCommand: (command: string) => void;
   setActiveArtifact: (id: string) => void;
   clearArtifacts: () => void;
   clearTerminal: () => void;
@@ -191,6 +202,26 @@ function _recomputeCostSummary(log: TokenUsageEntry[]): CostSummary {
   };
 }
 
+/**
+ * Derive a routing channel from an author or office name.
+ * Engineer offices (frontend/backend/database engineer) map to "engineering-core";
+ * ui/frontend design maps to "frontend-design"; devops/security maps to "ops-security";
+ * everything else falls back to "general".
+ */
+function deriveChannel(nameOrOffice: string): string {
+  const s = (nameOrOffice ?? "").toLowerCase();
+  if (s.includes("engineer") || s.includes("backend") || s.includes("database")) {
+    return "engineering-core";
+  }
+  if (s.includes("ui") || s.includes("frontend")) {
+    return "frontend-design";
+  }
+  if (s.includes("devops") || s.includes("security")) {
+    return "ops-security";
+  }
+  return "general";
+}
+
 /* ------------------------------------------------------------------ */
 /*  Store implementation                                               */
 /* ------------------------------------------------------------------ */
@@ -216,6 +247,7 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
     perOffice: [],
   },
   costMessages: [],
+  deploySteps: [],
 
   /* ---- simple setters ---- */
 
@@ -257,6 +289,14 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
   sendEnvelope(envelope: Envelope) {
     if (_ws && _ws.readyState === WebSocket.OPEN) {
       _ws.send(JSON.stringify(envelope));
+    }
+  },
+
+  /* ---- send a control command to the ML service ---- */
+
+  sendUserCommand(command: string) {
+    if (_ws && _ws.readyState === WebSocket.OPEN) {
+      _ws.send(JSON.stringify({ type: "user_command", command }));
     }
   },
 
@@ -356,6 +396,7 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
                 content: logLine,
                 timestamp: new Date(),
                 isUser: false,
+                channel: deriveChannel(author),
               },
             ],
             terminalLogs: [...state.terminalLogs, msg.data], // Keep original in terminal
@@ -412,12 +453,18 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
             office: string;
             name: string;
             status: string;
+            dataType?: string;
           };
           if (evt && evt.office) {
             const valid: WrapperStatus[] = ["IDLE", "THINKING", "WORKING", "BLOCKED"];
+            // THINKING/WORKING/IDLE/BLOCKED pass through unchanged; anything
+            // unexpected falls back to WORKING.
             const status = (valid.includes(evt.status as WrapperStatus)
               ? evt.status
               : "WORKING") as WrapperStatus;
+            const displayName = evt.name ?? evt.office;
+            const channel = deriveChannel(displayName || evt.office);
+            const statusLabel = status.charAt(0) + status.slice(1).toLowerCase();
             set((state) => ({
               wrappers: {
                 ...state.wrappers,
@@ -426,10 +473,95 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
                   type: evt.office,
                   status,
                   lastSeen: Date.now(),
-                  meta: { name: evt.name ?? evt.office, type: evt.office },
+                  meta: { name: displayName, type: evt.office, dataType: evt.dataType },
                 },
               },
+              agentMessages: [
+                ...state.agentMessages,
+                {
+                  id: `agent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                  author: displayName,
+                  avatar: displayName.slice(0, 2).toUpperCase(),
+                  content: evt.dataType
+                    ? `${statusLabel} on ${evt.dataType}`
+                    : statusLabel,
+                  timestamp: new Date(),
+                  isUser: false,
+                  channel,
+                },
+              ],
             }));
+          }
+        }
+
+        // Handle a code artifact streamed from the pipeline -> Workstation
+        if (msg.type === 'code_artifact') {
+          const evt = msg.data as unknown as {
+            filename: string;
+            language?: string;
+            code?: string;
+            progress?: number;
+            status?: string;
+          };
+          if (evt && evt.filename) {
+            const artifactId = evt.filename;
+            set((state) => {
+              const existing = state.artifacts.findIndex((a) => a.id === artifactId);
+              const record: CodeArtifact = {
+                id: artifactId,
+                filename: evt.filename,
+                language: evt.language ?? "plaintext",
+                code: evt.code ?? "",
+                type: "component",
+                wrapper: "pipeline",
+                agent: "pipeline",
+                timestamp: new Date(),
+                status: "complete",
+                progress: 100,
+              };
+
+              let newArtifacts: CodeArtifact[];
+              if (existing >= 0) {
+                newArtifacts = [...state.artifacts];
+                newArtifacts[existing] = { ...newArtifacts[existing], ...record };
+              } else {
+                newArtifacts = [...state.artifacts, record];
+              }
+
+              return {
+                artifacts: newArtifacts,
+                activeArtifactId: state.activeArtifactId ?? artifactId,
+              };
+            });
+          }
+        }
+
+        // Handle a deployment pipeline step (git_init/commit/push/build/deploy)
+        if (msg.type === 'deploy_step') {
+          const evt = msg.data as unknown as {
+            step: string;
+            status: string;
+            url?: string;
+          };
+          if (evt && evt.step) {
+            set((state) => {
+              const idx = state.deploySteps.findIndex((s) => s.step === evt.step);
+              const record: DeployStep = {
+                step: evt.step,
+                status: evt.status,
+                url: evt.url,
+              };
+
+              let newSteps: DeployStep[];
+              if (idx >= 0) {
+                newSteps = [...state.deploySteps];
+                newSteps[idx] = record;
+              } else {
+                newSteps = [...state.deploySteps, record];
+              }
+
+              return { deploySteps: newSteps };
+            });
           }
         }
 
