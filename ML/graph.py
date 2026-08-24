@@ -113,6 +113,23 @@ NODE_NAMES = {
 
 EVENT_PREFIX = "@@GRIFFIN_EVENT "
 
+# ── Office → data type ───────────────────────────────────────────
+# Classifies the kind of artifact each office produces so the frontend can
+# theme its canvas node. Offices not listed fall back to "doc".
+DATA_TYPE_MAP = {
+    "product_manager": "requirements",
+    "ceo_office": "requirements",
+    "ui_designer": "design",
+    "design_systems": "design",
+    "ux_research": "design",
+    "database_engineer": "schema",
+    "api_designer": "schema",
+    "frontend_engineer": "code",
+    "backend_engineer": "code",
+    "devops_office": "ops",
+    "security_officer": "ops",
+}
+
 
 def _emit_status(office_id: str, status: str) -> None:
     """Print a status event that the ML service parses and forwards."""
@@ -121,6 +138,7 @@ def _emit_status(office_id: str, status: str) -> None:
         "office": office_id,
         "name": NODE_NAMES.get(office_id, office_id),
         "status": status,
+        "dataType": DATA_TYPE_MAP.get(office_id, "doc"),
     }
     try:
         print(EVENT_PREFIX + json.dumps(payload), flush=True)
@@ -129,10 +147,10 @@ def _emit_status(office_id: str, status: str) -> None:
 
 
 def _instrument(office_id: str, fn):
-    """Wrap an office node so it emits WORKING, then IDLE (or BLOCKED on error)."""
+    """Wrap an office node so it emits THINKING, then IDLE (or BLOCKED on error)."""
 
     def wrapped(state):
-        _emit_status(office_id, "WORKING")
+        _emit_status(office_id, "THINKING")
         try:
             result = fn(state)
         except Exception:
