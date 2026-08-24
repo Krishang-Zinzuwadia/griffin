@@ -48,39 +48,54 @@ description of the current build.
 - **Dynamic office chain (LangGraph).** The CEO office runs first, picks which
   offices to activate for a given prompt, and the graph routes through only those
   offices before finishing at DevOps.
-- **About a dozen offices.** CEO, Product Manager, Architect, Cost Optimizer, UI
-  Designer, API Designer, Frontend Engineer, Backend Engineer, Database Engineer,
-  QA Engineer, Security Officer, Tech Writer, and DevOps are implemented.
-- **GitHub and Vercel automation.** The DevOps office creates a GitHub repo,
-  pushes the generated code, and deploys to Vercel.
-- **Offline mock provider.** `LLM_PROVIDER=mock` runs the whole chain with no API
-  key and no network, and a pytest suite exercises it.
-- **GitHub Actions CI.** Runs the Python tests, a frontend build, and an
-  ml-service bundle check on every push and pull request.
-- **Live Blueprint Canvas.** Office status events stream over the WebSocket and
-  drive the canvas node states in real time.
+- **Two dozen offices.** The core set (CEO, Product Manager, Architect, Cost
+  Optimizer, UI Designer, API Designer, Frontend, Backend, and Database Engineers,
+  QA, Security, Tech Writer, DevOps) plus an expanded catalog: Legal and Compliance,
+  UX Research, Design Systems, Localization, Performance, Accessibility, Marketing,
+  Data Science, AI and ML, 3D, Game Dev, Mobile, and IoT. Each ships at least one
+  real artifact file.
+- **FastAPI backend with persistence.** `backend/api` exposes REST plus a WebSocket
+  endpoint, mirrors the ml-service message contract, and persists projects, offices,
+  and messages. It defaults to SQLite and uses Postgres when `DATABASE_URL` is set.
+- **Containerized backend.** The repo root `Dockerfile` builds the FastAPI service
+  plus the pipeline and is verified in CI to build, run, and complete a pipeline over
+  its WebSocket.
+- **GitHub and Vercel automation.** The DevOps office creates a GitHub repo, pushes
+  the generated code, deploys to Vercel, writes a CI workflow into each generated
+  project, and posts a QR code for the live URL.
+- **Offline mock provider and tests.** `LLM_PROVIDER=mock` runs the whole chain with
+  no API key and no network, covered by a pytest suite.
+- **GitHub Actions CI.** Python tests, a frontend build, an ml-service bundle check,
+  the FastAPI tests, and a full backend container build and run on every push and PR.
+- **Live Blueprint Canvas.** Office status events stream over the WebSocket and drive
+  node states in real time, including THINKING, edges colored by data type, and an
+  office interior panel on click.
+- **Monaco Workstation.** Generated files stream in as code artifacts and ghost type
+  into a read only Monaco editor, with a live preview tab.
 - **Cost Dashboard.** Fed by the real per-call token usage recorded during a run.
-- **Project naming.** The generated project name is parsed from the pipeline
-  output and shown in the UI.
+- **Communication Hub.** Auto channels grouped from tagged agent messages.
+- **God Mode terminal.** `/evacuate`, `/deploy --force`, and `/status` dispatch real
+  commands to the backend and read live state.
+- **Deployment monitor widget.** Shows the live git and deploy steps during a run.
+- **QA and Security offices.** QA runs real offline checks (`node --check`, Python
+  `compile()`) and records results; Security runs a static scan and writes a
+  measured `security_audit.md`.
+- **Constitution checks.** Generated code is scanned against the file rules and a
+  report is produced; secrets are masked in reports.
+- **Real multiverse instances.** The Multiverse view maps one card per real git
+  branch.
+- **Project naming.** The generated project name flows through to the UI.
 
 ### Roadmap (not yet implemented)
 
-- **FastAPI backend.** The backend today is a Bun WebSocket service that spawns the
-  Python CLI, not a FastAPI app.
-- **PostgreSQL persistence.** Nothing is stored in a database yet; a run keeps
-  state in memory and writes generated code to `sandbox/`.
-- **The full 26-office catalog.** About a dozen offices exist today; the rest are
-  planned.
-- **Monaco or xterm based Workstation with code streaming.** The current
-  Workstation is a tabbed artifact viewer. It does not embed Monaco or xterm and
-  does not stream code character by character.
-- **Full multiverse instancing.** The Multiverse view is a visual scene, not real
-  isolated universe instances.
-- **God Mode terminal that acts.** Terminal commands return canned responses; they
-  do not perform actions yet.
-- **QA that runs a test suite.** The QA office generates best-effort test files; it
-  does not execute them, run a full test suite, or produce coverage.
-- **Zero-touch deploy monitor widget and QR code.** Not implemented.
+- **The full 26-office catalog and the Head Agent plus Worker Drone structure.**
+  About two dozen offices exist; a few specialized ones and the internal head and
+  drone decomposition are still planned.
+- **xterm terminal and per-character token streaming.** The God Mode view uses a
+  custom log view rather than xterm, and the Workstation ghost types from completed
+  artifacts rather than a per-character server stream.
+- **The wider REQUIREMENTS.md v3 concepts** not listed above (for example the
+  time scrubber, voice intercom, and metropolis views).
 
 ---
 
@@ -125,9 +140,10 @@ description of the current build.
 - **Icons:** Lucide React
 
 ### Backend
-- **ML Service:** Bun + TypeScript
-- **WebSocket:** Real-time bidirectional communication
-- **Process Management:** Subprocess spawning for Python pipeline
+- **ML Service:** Bun + TypeScript WebSocket service that spawns the pipeline
+- **API Service:** Python FastAPI with REST plus WebSocket and SQLite or Postgres persistence (`backend/api`)
+- **Container:** Repo root `Dockerfile` builds the API service plus the pipeline
+- **Process Management:** Subprocess spawning for the Python pipeline
 
 ### AI Pipeline (Python)
 - **Agent Framework:** LangGraph + LangChain
@@ -230,9 +246,10 @@ The application will be available at `http://localhost:3000`
 ```
 griffin/
 ├── backend/
-│   └── ml-service/           # WebSocket server (Bun + TS)
-│       ├── index.ts          # Main server with WebSocket handlers
-│       └── package.json
+│   ├── ml-service/           # WebSocket server (Bun + TS)
+│   │   ├── index.ts          # Main server with WebSocket handlers
+│   │   └── package.json
+│   └── api/                  # FastAPI service with persistence (Python)
 │
 ├── frontend/                 # Next.js 16 application
 │   ├── src/
@@ -249,10 +266,11 @@ griffin/
 │   ├── config.py            # LLM configuration
 │   ├── requirements.txt     # Python dependencies
 │   └── offices/             # AI agent implementations
-│       ├── ceo.py           # Project planning
-│       ├── product.py       # Architecture design
-│       ├── engineering.py    # Code generation
-│       └── devops.py        # GitHub + Vercel deployment
+│       ├── ceo.py               # Project planning and office selection
+│       ├── product_manager.py   # Requirements
+│       ├── architect.py         # Tech stack and structure
+│       ├── frontend_engineer.py # Code generation (plus backend and database)
+│       └── devops.py            # GitHub and Vercel deployment
 │
 ├── sandbox/                 # Generated projects (auto-created)
 ├── package.json            # Root package with dev scripts
