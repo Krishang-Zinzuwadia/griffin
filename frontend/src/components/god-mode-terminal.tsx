@@ -37,150 +37,14 @@ const initialLines: TerminalLine[] = [
   },
 ];
 
-const commandResponses: Record<string, TerminalLine[]> = {
-  "/help": [
-    {
-      id: "h1",
-      type: "output",
-      content: "Available Commands:",
-      timestamp: new Date(),
-    },
-    {
-      id: "h2",
-      type: "output",
-      content: "  /deploy [--force]  - Deploy the application",
-      timestamp: new Date(),
-    },
-    {
-      id: "h3",
-      type: "output",
-      content: "  /evacuate          - Emergency session restart",
-      timestamp: new Date(),
-    },
-    {
-      id: "h4",
-      type: "output",
-      content: "  /hire [Role]       - Spawn custom agent",
-      timestamp: new Date(),
-    },
-    {
-      id: "h5",
-      type: "output",
-      content: "  /status            - Show system status",
-      timestamp: new Date(),
-    },
-    {
-      id: "h6",
-      type: "output",
-      content: "  /clear             - Clear terminal",
-      timestamp: new Date(),
-    },
-  ],
-  "/status": [
-    {
-      id: "s1",
-      type: "output",
-      content: "System Status:",
-      timestamp: new Date(),
-    },
-    {
-      id: "s2",
-      type: "output",
-      content: "  Offices Online: 4",
-      timestamp: new Date(),
-    },
-    {
-      id: "s3",
-      type: "output",
-      content: "  Active Drones: 10",
-      timestamp: new Date(),
-    },
-    {
-      id: "s4",
-      type: "output",
-      content: "  Tasks Completed: 47",
-      timestamp: new Date(),
-    },
-    {
-      id: "s5",
-      type: "success",
-      content: "  All systems operational",
-      timestamp: new Date(),
-    },
-  ],
-  "/deploy": [
-    {
-      id: "d1",
-      type: "output",
-      content: "Initiating deployment sequence...",
-      timestamp: new Date(),
-    },
-    {
-      id: "d2",
-      type: "output",
-      content: "Running tests...",
-      timestamp: new Date(),
-    },
-    {
-      id: "d3",
-      type: "success",
-      content: "All tests passed. Deploying to production...",
-      timestamp: new Date(),
-    },
-    {
-      id: "d4",
-      type: "success",
-      content: "Deployment complete!",
-      timestamp: new Date(),
-    },
-  ],
-  "/deploy --force": [
-    {
-      id: "df1",
-      type: "error",
-      content: "WARNING: Bypassing tests!",
-      timestamp: new Date(),
-    },
-    {
-      id: "df2",
-      type: "output",
-      content: "Force deploying...",
-      timestamp: new Date(),
-    },
-    {
-      id: "df3",
-      type: "success",
-      content: "Deployment complete (forced).",
-      timestamp: new Date(),
-    },
-  ],
-  "/evacuate": [
-    {
-      id: "e1",
-      type: "error",
-      content: "EMERGENCY EVACUATION INITIATED",
-      timestamp: new Date(),
-    },
-    {
-      id: "e2",
-      type: "output",
-      content: "Terminating all sessions...",
-      timestamp: new Date(),
-    },
-    {
-      id: "e3",
-      type: "output",
-      content: "Clearing sandboxes...",
-      timestamp: new Date(),
-    },
-    {
-      id: "e4",
-      type: "success",
-      content: "System reset complete. Restarting...",
-      timestamp: new Date(),
-    },
-  ],
-};
+/** Quick command buttons rendered under the input. */
+const quickCommands: { label: string; value: string }[] = [
+  { label: "/help", value: "/help" },
+  { label: "/status", value: "/status" },
+  { label: "/deploy --force", value: "/deploy --force" },
+  { label: "/evacuate", value: "/evacuate" },
+  { label: "/hire", value: "/hire " },
+];
 
 const lineColors: Record<TerminalLine["type"], string> = {
   input: "text-foreground",
@@ -198,8 +62,27 @@ const lineIcons: Record<TerminalLine["type"], LucideIcon | null> = {
   system: TerminalIcon,
 };
 
+/** Build a terminal line with a unique id for use as a React key. */
+function createLine(type: TerminalLine["type"], content: string): TerminalLine {
+  return {
+    id: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    type,
+    content,
+    timestamp: new Date(),
+  };
+}
+
 export function GodModeTerminal() {
-  const { terminalLogs, clearTerminal } = useOrchestratorStore();
+  const {
+    connected,
+    wrappers,
+    artifacts,
+    costSummary,
+    deploySteps,
+    terminalLogs,
+    clearTerminal,
+    sendUserCommand,
+  } = useOrchestratorStore();
   const [lines, setLines] = useState<TerminalLine[]>(initialLines);
   const [inputValue, setInputValue] = useState("");
   const [history, setHistory] = useState<string[]>([]);
@@ -211,7 +94,7 @@ export function GodModeTerminal() {
   const linkifyContent = (content: string) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const parts = content.split(urlRegex);
-    
+
     return parts.map((part, index) => {
       if (urlRegex.test(part)) {
         return (
@@ -247,57 +130,128 @@ export function GodModeTerminal() {
   }, [allLines.length]);
 
   const executeCommand = (cmd: string) => {
-    const trimmedCmd = cmd.trim().toLowerCase();
+    const raw = cmd.trim();
+    if (!raw) return;
 
-    // Add input line
-    const inputLine: TerminalLine = {
-      id: Date.now().toString(),
-      type: "input",
-      content: cmd,
-      timestamp: new Date(),
-    };
+    // Normalise case and collapse internal whitespace for command matching.
+    const normalized = raw.toLowerCase().replace(/\s+/g, " ");
 
-    setLines((prev) => [...prev, inputLine]);
-    setHistory((prev) => [...prev, cmd]);
+    // Echo the typed line and record it in history.
+    setLines((prev) => [...prev, createLine("input", raw)]);
+    setHistory((prev) => [...prev, raw]);
     setHistoryIndex(-1);
 
-    // Handle commands
-    if (trimmedCmd === "/clear") {
+    const appendLines = (newLines: TerminalLine[]) => {
+      setLines((prev) => [...prev, ...newLines]);
+    };
+
+    // /clear: wipe both the local view and the live ML log stream.
+    if (normalized === "/clear") {
       setLines([]);
       clearTerminal();
       return;
     }
 
-    const response = commandResponses[trimmedCmd];
-    if (response) {
-      setTimeout(() => {
-        setLines((prev) => [...prev, ...response]);
-      }, 100);
-    } else if (trimmedCmd.startsWith("/hire")) {
-      const role = cmd.slice(5).trim() || "Generic Agent";
-      setTimeout(() => {
-        setLines((prev) => [
-          ...prev,
-          {
-            id: Date.now().toString(),
-            type: "success",
-            content: `Spawned new ${role} agent`,
-            timestamp: new Date(),
-          },
+    // /help: list the real commands.
+    if (normalized === "/help") {
+      appendLines([
+        createLine("output", "Available commands:"),
+        createLine("output", "  /status            Show live system status"),
+        createLine("output", "  /deploy --force    Force deploy, bypassing gates"),
+        createLine("output", "  /evacuate          Kill the running pipeline and clear the log"),
+        createLine("output", "  /hire [role]       Request a custom agent from the orchestrator"),
+        createLine("output", "  /clear             Clear the terminal"),
+        createLine("output", "  /help              Show this help"),
+      ]);
+      return;
+    }
+
+    // /status: print real live values pulled from the store.
+    if (normalized === "/status") {
+      const officeCount = Object.keys(wrappers).length;
+      const deploySummary = (() => {
+        if (deploySteps.length === 0) return "no steps reported";
+        const last = deploySteps[deploySteps.length - 1];
+        const plural = deploySteps.length === 1 ? "" : "s";
+        return `${deploySteps.length} step${plural}, latest ${last.step} (${last.status})`;
+      })();
+
+      appendLines([
+        createLine("output", "System status:"),
+        createLine(
+          connected ? "success" : "error",
+          `  Connection: ${connected ? "connected" : "disconnected"}`,
+        ),
+        createLine("output", `  Active offices: ${officeCount}`),
+        createLine("output", `  Artifacts: ${artifacts.length}`),
+        createLine("output", `  Total cost: $${costSummary.totalCostUsd.toFixed(4)}`),
+        createLine("output", `  Deploy: ${deploySummary}`),
+      ]);
+      return;
+    }
+
+    // /evacuate: kill the running pipeline and clear the live log.
+    if (normalized === "/evacuate") {
+      sendUserCommand("/evacuate");
+      clearTerminal();
+      appendLines([
+        connected
+          ? createLine(
+              "success",
+              "Evacuation signal sent to ML service. Running pipeline terminated; live log cleared.",
+            )
+          : createLine(
+              "error",
+              "No active ML connection. Live log cleared, but the evacuation signal was not delivered.",
+            ),
+      ]);
+      return;
+    }
+
+    // /deploy [--force]: only --force is a real backend action (arms the force flag).
+    if (normalized === "/deploy" || normalized.startsWith("/deploy ")) {
+      if (!normalized.includes("--force")) {
+        appendLines([
+          createLine(
+            "output",
+            "Deployment runs automatically after the pipeline. Use /deploy --force to override the gates.",
+          ),
         ]);
-      }, 100);
-    } else if (trimmedCmd.startsWith("/")) {
-      setTimeout(() => {
-        setLines((prev) => [
-          ...prev,
-          {
-            id: Date.now().toString(),
-            type: "error",
-            content: `Unknown command: ${cmd}`,
-            timestamp: new Date(),
-          },
+        return;
+      }
+      sendUserCommand("/deploy --force");
+      appendLines([
+        connected
+          ? createLine("success", "Force deploy armed. Sent /deploy --force to the ML service.")
+          : createLine("error", "No active ML connection. /deploy --force could not be delivered."),
+      ]);
+      return;
+    }
+
+    // /hire [role]: no dedicated hire endpoint, so forward the request over the socket.
+    if (normalized === "/hire" || normalized.startsWith("/hire ")) {
+      const role = raw.slice("/hire".length).trim();
+      if (!role) {
+        appendLines([
+          createLine("output", "Usage: /hire [role], for example /hire Security Auditor"),
         ]);
-      }, 100);
+        return;
+      }
+      sendUserCommand(`/hire ${role}`);
+      appendLines([
+        connected
+          ? createLine("success", `Hire request for "${role}" dispatched to the orchestrator.`)
+          : createLine(
+              "error",
+              `No active ML connection. Hire request for "${role}" was not delivered.`,
+            ),
+      ]);
+      return;
+    }
+
+    // Any other slash command is unknown.
+    if (normalized.startsWith("/")) {
+      appendLines([createLine("error", `Unknown command: ${raw}`)]);
     }
   };
 
@@ -345,11 +299,11 @@ export function GodModeTerminal() {
       <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-0">
         {allLines.map((line) => {
           const Icon = lineIcons[line.type];
-          
+
           // Check if line contains folder structure or box drawing characters
           const hasBoxChars = /[─│┌┐└┘├┤┬┴┼═║╔╗╚╝╠╣╦╩╬]/.test(line.content);
-          const isStructureLine = /^[\s│├└─]+/.test(line.content) || 
-                                  line.content.includes('├──') || 
+          const isStructureLine = /^[\s│├└─]+/.test(line.content) ||
+                                  line.content.includes('├──') ||
                                   line.content.includes('└──') ||
                                   line.content.includes('│') ||
                                   hasBoxChars;
@@ -404,20 +358,18 @@ export function GodModeTerminal() {
         >
           Clear All
         </button>
-        {Object.keys(commandResponses)
-          .filter((cmd) => !cmd.includes(" "))
-          .map((cmd) => (
-            <button
-              key={cmd}
-              onClick={() => {
-                setInputValue(cmd);
-                inputRef.current?.focus();
-              }}
-              className="px-2 py-1 text-xs rounded bg-muted/20 hover:bg-muted/30 transition-colors"
-            >
-              {cmd}
-            </button>
-          ))}
+        {quickCommands.map((cmd) => (
+          <button
+            key={cmd.label}
+            onClick={() => {
+              setInputValue(cmd.value);
+              inputRef.current?.focus();
+            }}
+            className="px-2 py-1 text-xs rounded bg-muted/20 hover:bg-muted/30 transition-colors"
+          >
+            {cmd.label}
+          </button>
+        ))}
       </div>
     </div>
   );
