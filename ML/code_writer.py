@@ -16,6 +16,46 @@ from .utils import (
 )
 from .logger import get_logger
 
+# ── Live events ──────────────────────────────────────────────────
+# Coding offices emit a machine readable event per file so the ML service can
+# stream generated code straight to the frontend as it lands.
+EVENT_PREFIX = "@@GRIFFIN_EVENT "
+
+_LANGUAGE_BY_EXT = {
+    "html": "html",
+    "css": "css",
+    "js": "javascript",
+    "mjs": "javascript",
+    "jsx": "javascript",
+    "ts": "typescript",
+    "tsx": "typescript",
+    "py": "python",
+    "json": "json",
+    "md": "markdown",
+}
+
+
+def _language_for(filepath: str) -> str:
+    """Map a file path to a highlight language by its extension."""
+    ext = filepath.rsplit(".", 1)[-1].lower() if "." in filepath else ""
+    return _LANGUAGE_BY_EXT.get(ext, "plaintext")
+
+
+def _emit_code_artifact(filepath: str, content: str) -> None:
+    """Emit a live code_artifact event for a freshly written file."""
+    try:
+        payload = {
+            "kind": "code_artifact",
+            "filename": filepath,
+            "language": _language_for(filepath),
+            "code": content,
+            "progress": 100,
+            "status": "complete",
+        }
+        print(EVENT_PREFIX + json.dumps(payload), flush=True)
+    except Exception:
+        pass
+
 
 def write_files(
     state: dict,
@@ -121,6 +161,7 @@ def write_files(
 
         file_elapsed = time.time() - file_start
         codebase[filepath] = content
+        _emit_code_artifact(filepath, content)
         tag = office_name.upper().replace(" ", "_")
         logs.append(f"[{tag}] Wrote {filepath} ({len(content)} chars, {file_elapsed:.1f}s)")
         logger.info(
