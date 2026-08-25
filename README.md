@@ -140,10 +140,19 @@ description of the current build.
 - **Icons:** Lucide React
 
 ### Backend
-- **ML Service:** Bun + TypeScript WebSocket service that spawns the pipeline
-- **API Service:** Python FastAPI with REST plus WebSocket and SQLite or Postgres persistence (`backend/api`)
-- **Container:** Repo root `Dockerfile` builds the API service plus the pipeline
-- **Process Management:** Subprocess spawning for the Python pipeline
+
+Griffin has two backends that both run the same office pipeline and speak the same
+WebSocket message contract, so the frontend works against either one:
+
+- **ML Service (Bun + TypeScript):** the lightweight local-dev option. A WebSocket
+  service on `ws://localhost:9100` that spawns the pipeline. No database, quick to start.
+- **API Service (Python FastAPI):** the recommended backend for deployment. It exposes
+  REST plus a WebSocket at `/ws`, adds persistence for projects, offices, and messages,
+  and is the service the container builds and runs (`backend/api`). It defaults to SQLite
+  and uses Postgres when `DATABASE_URL` is set.
+- **Container:** the repo root `Dockerfile` builds the FastAPI service plus the pipeline
+  it spawns and serves the WebSocket at `/ws` on port 8000.
+- **Process Management:** subprocess spawning for the Python pipeline.
 
 ### AI Pipeline (Python)
 - **Agent Framework:** LangGraph + LangChain
@@ -325,8 +334,13 @@ LLM_PROVIDER=mock python -m ML.main "make a simple counter page"
 | `GITHUB_TOKEN` | No | - | GitHub Personal Access Token |
 | `GITHUB_OWNER` | No | - | GitHub username/organization |
 | `VERCEL_TOKEN` | No | - | Vercel API token |
-| `ML_SERVICE_PORT` | No | `9100` | WebSocket server port |
-| `NEXT_PUBLIC_ML_SERVICE_URL` | No | `ws://localhost:9100` | WebSocket URL |
+| `ML_SERVICE_PORT` | No | `9100` | Bun ml-service WebSocket port |
+| `NEXT_PUBLIC_ML_SERVICE_URL` | No | `ws://localhost:9100` | Bun ml-service WebSocket URL |
+| `NEXT_PUBLIC_ORCHESTRATOR_URL` | No | `ws://localhost:9100` | Backend WebSocket URL the frontend connects to (use `wss://your-backend-host/ws` in production) |
+| `DATABASE_URL` | No | SQLite | Postgres connection string for the FastAPI service; defaults to local SQLite when unset |
+| `GRIFFIN_WS_TOKEN` | No | - | FastAPI service: optional shared secret; if set, clients must pass it as a `token` query parameter on `/ws` |
+| `GRIFFIN_MAX_CONCURRENCY` | No | `3` | FastAPI service: max concurrent pipeline runs |
+| `GRIFFIN_MAX_PROMPT_CHARS` | No | `4000` | FastAPI service: max accepted prompt length in characters |
 
 *Only one LLM provider key is required.
 
@@ -335,13 +349,16 @@ LLM_PROVIDER=mock python -m ML.main "make a simple counter page"
 ## 🌐 Deployment
 
 Griffin ships as two deployable pieces: the Next.js frontend and a Python backend
-that runs the office pipeline. They talk over a WebSocket.
+that runs the office pipeline. They talk over a WebSocket. FastAPI is the canonical
+backend for deployment because it adds persistence and is what the container runs; the
+frontend points at it through `NEXT_PUBLIC_ORCHESTRATOR_URL` (use `wss` from an https site).
 
 ### 1. Backend (FastAPI plus the Python pipeline)
 
 The repo root `Dockerfile` builds the backend container (the FastAPI service in
-`backend/api` plus the `ML/` pipeline it spawns). It works on any container host
-(Railway, Render, Fly, or your own server). `railway.toml` is preconfigured to build it.
+`backend/api` plus the `ML/` pipeline it spawns) and serves the WebSocket at `/ws` on
+port 8000. It works on any container host (Railway, Render, Fly, or your own server).
+`railway.toml` is preconfigured to build it.
 
 Build and run locally:
 
@@ -354,8 +371,15 @@ Set these environment variables on the host for a real run (see the reference ta
 `LLM_PROVIDER` and its key (`GOOGLE_API_KEY` or `OPENROUTER_API_KEY`), and optionally
 `GITHUB_TOKEN`, `GITHUB_OWNER`, and `VERCEL_TOKEN` so generated projects are pushed and
 deployed. `DATABASE_URL` switches persistence from the default SQLite to Postgres. With
-no keys the backend runs in offline mock mode. The health check is `GET /`; the
-WebSocket endpoint is `/ws`.
+no keys the backend runs in offline mock mode. The FastAPI service listens on port 8000;
+the health check is `GET /` and the WebSocket endpoint is `/ws`.
+
+The FastAPI service honors an interim set of guard rails. `GRIFFIN_WS_TOKEN` is an
+optional shared secret: when it is set, WebSocket clients must present the same value as
+a `token` query parameter on the `/ws` URL (for example
+`wss://your-backend-host/ws?token=...`), and connections without it are rejected.
+`GRIFFIN_MAX_CONCURRENCY` caps the number of concurrent pipeline runs (default `3`), and
+`GRIFFIN_MAX_PROMPT_CHARS` caps the accepted prompt length in characters (default `4000`).
 
 ### 2. Frontend (Vercel)
 
