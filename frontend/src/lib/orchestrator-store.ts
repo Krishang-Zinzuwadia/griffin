@@ -85,7 +85,7 @@ export interface CostSummary {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Envelope – mirrors backend/orchestrator/src/types.ts               */
+/*  Envelope - mirrors backend/orchestrator/src/types.ts               */
 /* ------------------------------------------------------------------ */
 
 interface Envelope<TPayload = unknown> {
@@ -134,28 +134,7 @@ interface OrchestratorState {
 /* ------------------------------------------------------------------ */
 
 let _ws: WebSocket | null = null;
-let _heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-let _statusPollTimer: ReturnType<typeof setInterval> | null = null;
 let _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let _registeredId: string | null = null;
-
-/** Fetch /status via HTTP to get the wrapper list (fallback & periodic sync). */
-async function pollWrapperStatus(httpUrl: string) {
-  try {
-    const res = await fetch(httpUrl);
-    if (!res.ok) return;
-    const data = (await res.json()) as { wrappers: WrapperInfo[] };
-    const map: Record<string, WrapperInfo> = {};
-    for (const w of data.wrappers) {
-      // Hide our own UI observer from the wrapper list
-      if (w.id === _registeredId) continue;
-      map[w.id] = w;
-    }
-    useOrchestratorStore.setState({ wrappers: map });
-  } catch {
-    /* orchestrator might be down – ignore */
-  }
-}
 
 /** Recompute the cost summary from the full token usage log. */
 function _recomputeCostSummary(log: TokenUsageEntry[]): CostSummary {
@@ -220,6 +199,27 @@ function deriveChannel(nameOrOffice: string): string {
     return "ops-security";
   }
   return "general";
+}
+
+/**
+ * Derive the artifact type from its filename, falling back to language.
+ * Only real UI component files (.tsx / .jsx) are typed "component" so the
+ * Workstation LivePreview renders them as React; every other file (.py, .css,
+ * .md, .json, plain .js, etc.) is typed "code" so it is shown as source only
+ * and never injected into the React preview iframe.
+ */
+function deriveArtifactType(filename: string, language: string): string {
+  const name = (filename ?? "").toLowerCase();
+  const lang = (language ?? "").toLowerCase();
+  if (
+    name.endsWith(".tsx") ||
+    name.endsWith(".jsx") ||
+    lang === "tsx" ||
+    lang === "jsx"
+  ) {
+    return "component";
+  }
+  return "code";
 }
 
 /* ------------------------------------------------------------------ */
@@ -332,12 +332,23 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
       return;
     }
 
+    // Avoid mixed-content blocking: when the page is served over https,
+    // upgrade an insecure ws:// endpoint to wss:// before opening the socket.
+    let target = url;
+    if (
+      typeof window !== "undefined" &&
+      window.location.protocol === "https:" &&
+      target.startsWith("ws://")
+    ) {
+      target = "wss://" + target.slice("ws://".length);
+    }
+
     try {
-      const ws = new WebSocket(url);
+      const ws = new WebSocket(target);
       _ws = ws;
 
       ws.addEventListener("open", () => {
-        console.log("[ml-service] connected to", url);
+        console.log("[ml-service] connected to", target);
         set({ connected: true });
       });
 
@@ -360,10 +371,10 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
           let avatar = 'ML';
 
           if (!logLine.includes('Starting ML pipeline for:')) {
-            // Try to extract office name from patterns like "🏢 CEO OFFICE — ..." or "⚡️ DEVOPS OFFICE — ..."
-            // Match at start of line OR after whitespace, with optional emoji prefix
-            const officeMatch = logLine.match(/^(?:[🏢⚡️✅⏳🔧🚀📁🔗📤📝❌⚠️])?\s*([A-Z][A-Z\s]*(?:OFFICE|DESIGN|API|SECURITY|CEO|PM|DEVOPS))\s*[—\-:]\s*/) ||
-              logLine.match(/(?:^|\s)([A-Z][A-Z\s]*(?:OFFICE|DESIGN|API|SECURITY|CEO|PM|DEVOPS))\s*[—\-:]\s*/);
+            // Match an optional emoji prefix, an ALL CAPS office name, then a
+            // separator (em dash, hyphen or colon) at start of line or after whitespace.
+            const officeMatch = logLine.match(/^(?:[🏢⚡️✅⏳🔧🚀📁🔗📤📝❌⚠️])?\s*([A-Z][A-Z\s]*(?:OFFICE|DESIGN|API|SECURITY|CEO|PM|DEVOPS))\s*[\u2014\-:]\s*/) ||
+              logLine.match(/(?:^|\s)([A-Z][A-Z\s]*(?:OFFICE|DESIGN|API|SECURITY|CEO|PM|DEVOPS))\s*[\u2014\-:]\s*/);
 
             if (officeMatch) {
               // Extract author from the matched pattern
@@ -512,7 +523,7 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
                 filename: evt.filename,
                 language: evt.language ?? "plaintext",
                 code: evt.code ?? "",
-                type: "component",
+                type: deriveArtifactType(evt.filename, evt.language ?? ""),
                 wrapper: "pipeline",
                 agent: "pipeline",
                 timestamp: new Date(),
@@ -638,7 +649,7 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
         _ws.send(
           JSON.stringify({
             type: "SHUTDOWN",
-            src: _registeredId ?? "ui-observer",
+            src: "ui-observer",
             ts: Date.now(),
           }),
         );
@@ -655,245 +666,5 @@ export const useOrchestratorStore = create<OrchestratorState>((set, get) => ({
 /* ------------------------------------------------------------------ */
 
 function cleanup() {
-  if (_heartbeatTimer) {
-    clearInterval(_heartbeatTimer);
-    _heartbeatTimer = null;
-  }
-  if (_statusPollTimer) {
-    clearInterval(_statusPollTimer);
-    _statusPollTimer = null;
-  }
   _ws = null;
-}
-
-/* ------------------------------------------------------------------ */
-/*  Envelope handler – routes incoming messages to state updates       */
-/* ------------------------------------------------------------------ */
-
-function handleEnvelope(
-  env: Envelope,
-  set: (partial: Partial<OrchestratorState> | ((s: OrchestratorState) => Partial<OrchestratorState>)) => void,
-  get: () => OrchestratorState,
-) {
-  const payload = (env.payload ?? {}) as Record<string, unknown>;
-
-  switch (env.type) {
-    /* ---- Registration acknowledgement ---- */
-    case "REGISTER_ACK": {
-      _registeredId = (payload.id as string) ?? env.id ?? "ui-observer";
-      console.log("[orchestrator] registered as", _registeredId);
-      break;
-    }
-
-    /* ---- Heartbeat ack — silently consumed ---- */
-    case "HEARTBEAT_ACK":
-      break;
-
-    /* ---- EVENT envelope — the main message bus ---- */
-    case "EVENT": {
-      const kind = payload.kind as string | undefined;
-
-      switch (kind) {
-        /* PM responding to a user chat message */
-        case "CHAT_RESPONSE": {
-          set((state) => ({
-            chatMessages: [
-              ...state.chatMessages,
-              {
-                id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                author: payload.author as string ?? "Griffin PM",
-                avatar: "PM",
-                content: (payload.text as string) ?? (payload.message as string) ?? "",
-                timestamp: new Date(),
-                isUser: false,
-              },
-            ],
-          }));
-          break;
-        }
-
-        /* Agent-to-agent or agent-to-UI summary messages */
-        case "AGENT_MESSAGE": {
-          set((state) => ({
-            agentMessages: [
-              ...state.agentMessages,
-              {
-                id: `agent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                author: (payload.author as string) ?? env.src ?? "Agent",
-                avatar: ((payload.author as string) ?? env.src ?? "AG").slice(0, 2).toUpperCase(),
-                content: (payload.text as string) ?? (payload.message as string) ?? "",
-                timestamp: new Date(),
-                isUser: false,
-              },
-            ],
-          }));
-          break;
-        }
-
-        /* A specialist generated a code artifact */
-        case "CODE_ARTIFACT": {
-          const artifactId =
-            (payload.id as string) ??
-            `art-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-          const filename = (payload.filename as string) ?? "untitled";
-          const language = (payload.language as string) ?? "typescript";
-          const code = (payload.code as string) ?? "";
-          const artType = (payload.artifactType as string) ?? (payload.type as string) ?? "component";
-          const componentName = (payload.componentName as string) ?? undefined;
-          const wrapper = env.src ?? "unknown";
-          const progress = (payload.progress as number) ?? 100;
-          const status = progress >= 100 ? "complete" : "streaming";
-
-          set((state) => {
-            const existing = state.artifacts.findIndex((a) => a.id === artifactId);
-            let newArtifacts: CodeArtifact[];
-
-            if (existing >= 0) {
-              // Update existing artifact (streaming progress)
-              newArtifacts = [...state.artifacts];
-              newArtifacts[existing] = {
-                ...newArtifacts[existing],
-                code,
-                progress,
-                status,
-              };
-            } else {
-              // New artifact
-              newArtifacts = [
-                ...state.artifacts,
-                {
-                  id: artifactId,
-                  filename,
-                  language,
-                  code,
-                  type: artType,
-                  wrapper,
-                  agent: wrapper,
-                  timestamp: new Date(),
-                  status,
-                  progress,
-                  componentName,
-                },
-              ];
-            }
-
-            return {
-              artifacts: newArtifacts,
-              // Auto-select the first artifact if none selected
-              activeArtifactId: state.activeArtifactId ?? artifactId,
-            };
-          });
-          break;
-        }
-
-        /* PM signals that the full project is ready (GitHub repo created) */
-        case "PROJECT_READY": {
-          set({
-            projectGithubUrl: (payload.githubUrl as string) ?? (payload.url as string) ?? null,
-            projectName: (payload.projectName as string) ?? null,
-            projectRepoName: (payload.repoName as string) ?? null,
-          });
-          // Add a chat message informing the user
-          set((state) => ({
-            chatMessages: [
-              ...state.chatMessages,
-              {
-                id: `msg-project-${Date.now()}`,
-                author: "Griffin PM",
-                avatar: "PM",
-                content: `🎉 Project is ready! ${(payload.githubUrl as string) ?? "Check the Workstation for generated code."}`,
-                timestamp: new Date(),
-                isUser: false,
-              },
-            ],
-          }));
-          break;
-        }
-
-        /* Status update from a wrapper */
-        case "STATUS_UPDATE": {
-          const wrapperId = env.src;
-          if (wrapperId) {
-            set((state) => {
-              const existing = state.wrappers[wrapperId];
-              if (!existing) return {};
-              return {
-                wrappers: {
-                  ...state.wrappers,
-                  [wrapperId]: {
-                    ...existing,
-                    status: (payload.status as WrapperStatus) ?? existing.status,
-                    lastSeen: Date.now(),
-                  },
-                },
-              };
-            });
-          }
-          break;
-        }
-
-        /* Legacy specialist outputs — treat as agent messages */
-        case "DESIGN_DRAFT":
-        case "API_DRAFT":
-        case "SCHEMA_DRAFT":
-        case "AUDIT_REPORT":
-        case "POLICY_RESULT": {
-          set((state) => ({
-            agentMessages: [
-              ...state.agentMessages,
-              {
-                id: `agent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                author: env.src ?? "Specialist",
-                avatar: (env.src ?? "SP").slice(0, 2).toUpperCase(),
-                content: (payload.summary as string) ?? (payload.text as string) ?? JSON.stringify(payload).slice(0, 300),
-                timestamp: new Date(),
-                isUser: false,
-              },
-            ],
-          }));
-          break;
-        }
-
-        default:
-          console.log("[orchestrator] unhandled EVENT kind:", kind, payload);
-      }
-      break;
-    }
-
-    /* ---- Catch-all for other envelope types (CHAT_RESPONSE at top level etc.) ---- */
-    default: {
-      // Some messages may arrive at top-level (not wrapped in EVENT)
-      if (env.type === "CHAT_RESPONSE") {
-        set((state) => ({
-          chatMessages: [
-            ...state.chatMessages,
-            {
-              id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              author: (payload.author as string) ?? "Griffin PM",
-              avatar: "PM",
-              content: (payload.text as string) ?? (payload.message as string) ?? "",
-              timestamp: new Date(),
-              isUser: false,
-            },
-          ],
-        }));
-      } else if (env.type === "AGENT_MESSAGE") {
-        set((state) => ({
-          agentMessages: [
-            ...state.agentMessages,
-            {
-              id: `agent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              author: (payload.author as string) ?? env.src ?? "Agent",
-              avatar: ((payload.author as string) ?? env.src ?? "AG").slice(0, 2).toUpperCase(),
-              content: (payload.text as string) ?? (payload.message as string) ?? "",
-              timestamp: new Date(),
-              isUser: false,
-            },
-          ],
-        }));
-      } else {
-        console.log("[orchestrator] unhandled envelope:", env.type, env);
-      }
-    }
-  }
 }
