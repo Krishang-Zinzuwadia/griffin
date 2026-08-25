@@ -230,15 +230,23 @@ class PipelineRunner:
     def _handle_stdout_line(self, line: str) -> None:
         clean = ANSI_RE.sub("", line)
 
-        # Structured live events (office status). Not echoed to the terminal.
+        # Structured live events. Not echoed to the terminal. These mirror the
+        # Bun ml-service exactly: office_status, code_artifact, and deploy_step
+        # are forwarded to the client under their own message types.
         if clean.startswith(EVENT_PREFIX):
             try:
                 evt = json.loads(clean[len(EVENT_PREFIX):])
             except Exception:
                 evt = None
-            if isinstance(evt, dict) and evt.get("kind") == "office_status":
-                self.emit({"type": "office_status", "data": evt})
-                self._persist_office_status(evt)
+            if isinstance(evt, dict):
+                kind = evt.get("kind")
+                if kind == "office_status":
+                    self.emit({"type": "office_status", "data": evt})
+                    self._persist_office_status(evt)
+                elif kind == "code_artifact":
+                    self.emit({"type": "code_artifact", "data": evt})
+                elif kind == "deploy_step":
+                    self.emit({"type": "deploy_step", "data": evt})
             return
 
         self.emit({"type": "terminal", "data": clean})
