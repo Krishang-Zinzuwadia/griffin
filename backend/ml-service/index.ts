@@ -9,6 +9,10 @@ const __dirname = dirname(__filename);
 
 const PORT = Number(process.env.ML_SERVICE_PORT ?? '9100');
 
+// Upper bound on accepted prompt length. Prompts longer than this are rejected
+// before any process is spawned. Falls back to 4000 when unset or invalid.
+const MAX_PROMPT_CHARS = Number(process.env.GRIFFIN_MAX_PROMPT_CHARS ?? '4000') || 4000;
+
 interface Message {
 	type: 'prompt' | 'progress' | 'complete' | 'error' | 'user_command';
 	data: string;
@@ -70,6 +74,32 @@ wss.on('connection', (ws: WebSocket) => {
 			const prompt = msg.data;
 			console.log(`Received prompt: "${prompt}"`);
 
+			// Concurrency guard: only one pipeline may run per connection at a
+			// time. Reject a second prompt instead of spawning another process.
+			if (currentMlProcess) {
+				ws.send(JSON.stringify({
+					type: 'error',
+					data: 'A pipeline is already running on this connection. Wait for it to finish or send /evacuate before starting another.',
+				}));
+				return;
+			}
+
+			// Prompt length bound: reject oversized prompts before spawning.
+			if (typeof prompt !== 'string') {
+				ws.send(JSON.stringify({
+					type: 'error',
+					data: 'Invalid prompt: expected a string.',
+				}));
+				return;
+			}
+			if (prompt.length > MAX_PROMPT_CHARS) {
+				ws.send(JSON.stringify({
+					type: 'error',
+					data: `Prompt is too long (${prompt.length} characters). The maximum allowed is ${MAX_PROMPT_CHARS} characters.`,
+				}));
+				return;
+			}
+
 			// Send acknowledgment
 			ws.send(JSON.stringify({
 				type: 'progress',
@@ -94,8 +124,9 @@ wss.on('connection', (ws: WebSocket) => {
 					...process.env,
 					...(forceDeployThisRun ? { GRIFFIN_FORCE_DEPLOY: '1' } : {}),
 				},
-				shell: true,
 				windowsHide: true, // Hide console window on Windows
+				// No shell: the prompt is passed as a plain argv element and is never
+				// interpreted by a shell, which removes the command-injection vector.
 			});
 			currentMlProcess = mlProcess;
 
@@ -283,6 +314,16 @@ wss.on('connection', (ws: WebSocket) => {
 
 	ws.on('close', () => {
 		console.log('Frontend disconnected');
+		// Kill any pipeline still running for this connection so it does not
+		// outlive the socket.
+		if (currentMlProcess) {
+			try {
+				currentMlProcess.kill();
+			} catch {
+				// Ignore kill errors
+			}
+			currentMlProcess = null;
+		}
 	});
 
 	ws.on('error', (err) => {
